@@ -10,12 +10,20 @@ export default function Home() {
         <p className="text-blue-200 text-xl max-w-md leading-relaxed mb-10">
           מצא את המקווה הקרוב אליך — טהרה, שלווה ומסורת
         </p>
-        <Link
-          to="/map"
-          className="bg-white text-blue-900 font-semibold text-lg px-8 py-3 rounded-full shadow-lg hover:bg-blue-50 transition"
-        >
-          מצא מקווה קרוב
-        </Link>
+        <div className="flex gap-4 flex-wrap justify-center">
+          <Link
+            to="/map"
+            className="bg-white text-blue-900 font-semibold text-lg px-8 py-3 rounded-full shadow-lg hover:bg-blue-50 transition"
+          >
+            מצא מקווה קרוב
+          </Link>
+          <Link
+            to="/zmanim"
+            className="bg-blue-600 text-white font-semibold text-lg px-8 py-3 rounded-full shadow-lg hover:bg-blue-500 transition"
+          >
+            זמנים הלכתיים
+          </Link>
+        </div>
       </div>
 
       {/* Features */}
