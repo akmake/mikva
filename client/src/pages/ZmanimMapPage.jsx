@@ -41,7 +41,7 @@ function fmtIso(val, tz) {
   const d = new Date(val)
   if (isNaN(d)) return null
   return d.toLocaleTimeString('he-IL', {
-    hour: '2-digit', minute: '2-digit', timeZone: tz,
+    hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: tz,
   })
 }
 
