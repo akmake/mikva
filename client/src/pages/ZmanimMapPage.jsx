@@ -71,6 +71,15 @@ function extractZmanim(cal) {
     }
   }
 
+  // Fallback for AlosBaalHatanya when degree calculation fails (high-latitude summer):
+  // use solar midnight (chatzot layla) — same as Chabad.org
+  if (!z.AlosBaalHatanya) {
+    try {
+      const midnight = cal.getSolarMidnight()
+      if (midnight) z.AlosBaalHatanya = midnight.toISO()
+    } catch {}
+  }
+
   return z
 }
 
