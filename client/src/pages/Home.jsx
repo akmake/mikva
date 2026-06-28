@@ -23,6 +23,12 @@ export default function Home() {
           >
             זמנים הלכתיים
           </Link>
+          <Link
+            to="/calendar"
+            className="bg-white/20 text-white font-semibold text-lg px-8 py-3 rounded-full shadow-lg hover:bg-white/30 transition"
+          >
+            לוח עברי
+          </Link>
         </div>
       </div>
 
