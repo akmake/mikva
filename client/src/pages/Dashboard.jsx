@@ -101,9 +101,10 @@ function fmt(date, tz) {
 function getCellColors(hd, sightings, cycle, vesetMap) {
   const k = `${hd.year}-${hd.month}-${hd.day}`
   const allConcerns = vesetMap[k] ?? []
-  // Concerns are per-onah — split them
-  const nightConcerns = allConcerns.filter(c => c.onah === 'night' || c.onah === 'full_day')
-  const dayConcerns   = allConcerns.filter(c => c.onah === 'day'   || c.onah === 'full_day')
+  // Only show dots for ACTIVE (non-uprooted) concerns
+  const activeConcerns = allConcerns.filter(c => !c.uprooted)
+  const nightConcerns  = activeConcerns.filter(c => c.onah === 'night' || c.onah === 'full_day')
+  const dayConcerns    = activeConcerns.filter(c => c.onah === 'day'   || c.onah === 'full_day')
 
   let nightColor = 'bg-slate-100'
   let dayColor   = 'bg-white'
@@ -185,7 +186,7 @@ const PHASE_CFG = {
 
 // ── Day detail bottom sheet ─────────────────────────────────────────────────
 
-function DaySheet({ hd, cellColors, cycle, sightings, location, phase, onClose, onRefresh }) {
+function DaySheet({ hd, cellColors, cycle, sightings, vesetConcerns = [], location, phase, onClose, onRefresh }) {
   const [view, setView]         = useState('main')
   const [timeInput, setTimeInput] = useState('')
   const [loading, setLoading]   = useState(false)
@@ -221,6 +222,7 @@ function DaySheet({ hd, cellColors, cycle, sightings, location, phase, onClose, 
   }, [timeInput, zmanim])
 
   const isFuture     = compareHebrewDates(hd, todayHebrew()) > 0
+  const isPast       = compareHebrewDates(hd, todayHebrew()) < 0
   const daySightings = sightings.filter(s => hebrewDateEquals(s.hebrewDate, hd))
   const dayType       = cellColors?.type ?? 'normal'
   const nightConcerns = cellColors?.nightConcerns ?? []
@@ -228,10 +230,15 @@ function DaySheet({ hd, cellColors, cycle, sightings, location, phase, onClose, 
   const allConcerns   = [...nightConcerns, ...dayConcerns]
     .filter((c, i, a) => a.findIndex(x => x.id === c.id) === i) // dedupe full_day
 
+  // Concerns that land ON this Hebrew day — with full uprooting data
+  const thisDayConcerns = vesetConcerns.filter(c => hebrewDateEquals(c.hebrewDate, hd))
+
   const canRecordSighting = !daySightings.length && !isFuture
   const canDoHefsek       = phase === 'waiting_hefsek' && !cycle?.hefsekTahara && !isFuture
   const canRecordBedika   = phase === 'counting_7' && (dayType === 'clean' || dayType === 'clean_7') && !isFuture
   const canRecordMikveh   = (phase === 'waiting_mikveh' || phase === 'counting_7') && !isFuture
+  // Can mark a concern day as "passed clean" only if: it's a past concern day, no sighting recorded on it
+  const canMarkClean = isPast && thisDayConcerns.length > 0 && daySightings.length === 0
 
   const hefsekWin = canDoHefsek ? hefsekWindow(hd, lat, lng) : null
   const bedikaWin = canRecordBedika ? bedikaWindows(hd, lat, lng) : null
@@ -302,6 +309,31 @@ function DaySheet({ hd, cellColors, cycle, sightings, location, phase, onClose, 
     finally { setLoading(false) }
   }
 
+  async function doMarkClean(concern) {
+    setLoading(true)
+    try {
+      await api.recordCleanPass({
+        concernType:       concern.type,
+        concernId:         concern.id,
+        hebrewDate:        concern.hebrewDate,
+        onah:              concern.onah,
+        relatedSightingId: concern.relatedSightingId,
+      })
+      await onRefresh()
+    } catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
+  async function doUndoClean(concern) {
+    if (!concern.observationIds?.length) return
+    setLoading(true)
+    try {
+      await api.deleteObservation(concern.observationIds[0])
+      await onRefresh()
+    } catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
   return (
     <>
       <div className="fixed inset-0 bg-black/25 z-40" onClick={onClose} />
@@ -362,15 +394,60 @@ function DaySheet({ hd, cellColors, cycle, sightings, location, phase, onClose, 
               <p className="text-blue-700 font-semibold">{dayType === 'mikveh' ? 'טבילה במקווה' : 'ליל הטבילה (מתוכנן)'}</p>
             </div>
           )}
-          {allConcerns.map(c => (
-            <div key={c.id} className="flex items-center gap-3 bg-orange-50 border border-orange-100 rounded-2xl px-4 py-3 mb-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-orange-400 shrink-0" />
-              <div>
-                <p className="text-orange-700 font-semibold">חשש {c.label}</p>
-                <p className="text-orange-400 text-sm">{ONAH_HE[c.onah]}</p>
+          {thisDayConcerns.map(c => {
+            const isUprooted = c.uprooted
+            const kavuaLabel = c.isKavua ? ' (קבוע)' : ''
+            const progressLabel = c.needed > 1
+              ? `עקירה: ${c.cleanPasses}/${c.needed}`
+              : c.cleanPasses >= 1 ? 'עבר ✓' : null
+
+            return (
+              <div key={c.id} className={`rounded-2xl px-4 py-3 mb-2 border ${
+                isUprooted
+                  ? 'bg-gray-50 border-gray-200 opacity-60'
+                  : 'bg-orange-50 border-orange-100'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className={`w-2.5 h-2.5 rounded-full mt-1 shrink-0 ${isUprooted ? 'bg-gray-400' : 'bg-orange-400'}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-semibold text-sm ${isUprooted ? 'text-gray-400 line-through' : 'text-orange-700'}`}>
+                      חשש {c.label}{kavuaLabel}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${isUprooted ? 'text-gray-400' : 'text-orange-400'}`}>
+                      {ONAH_HE[c.onah]}
+                      {progressLabel && <span className="mr-2 font-medium">{progressLabel}</span>}
+                    </p>
+                    {c.isKavua && !isUprooted && (
+                      <p className="text-xs text-orange-500 mt-0.5">נדרשות {c.needed - c.cleanPasses} עקירות נוספות</p>
+                    )}
+                  </div>
+                </div>
+                {/* Clean-pass action buttons */}
+                {isPast && daySightings.length === 0 && !isUprooted && (
+                  <button
+                    onClick={() => doMarkClean(c)}
+                    disabled={loading || c.cleanPasses >= 1}
+                    className={`mt-2 w-full rounded-xl py-2 text-sm font-medium transition ${
+                      c.cleanPasses >= 1
+                        ? 'bg-gray-100 text-gray-400 cursor-default'
+                        : 'bg-orange-100 hover:bg-orange-200 text-orange-700'
+                    }`}
+                  >
+                    {c.cleanPasses >= 1 ? 'סומן כעבר ללא ראיה ✓' : 'יום החשש עבר ללא ראיה'}
+                  </button>
+                )}
+                {isPast && c.cleanPasses >= 1 && (
+                  <button
+                    onClick={() => doUndoClean(c)}
+                    disabled={loading}
+                    className="mt-1 w-full text-gray-400 text-xs py-1 hover:text-gray-600 transition"
+                  >
+                    בטל סימון
+                  </button>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           {/* Hefsek window */}
           {canDoHefsek && hefsekWin && (
@@ -486,7 +563,7 @@ function DaySheet({ hd, cellColors, cycle, sightings, location, phase, onClose, 
                   <span>אישור טבילה במקווה</span><span className="text-2xl leading-none">✓</span>
                 </button>
               )}
-              {!canRecordSighting && !canDoHefsek && !canRecordBedika && !canRecordMikveh && (
+              {!canRecordSighting && !canDoHefsek && !canRecordBedika && !canRecordMikveh && !canMarkClean && (
                 <p className="text-center text-gray-400 text-sm py-3">
                   {isFuture ? 'תאריך עתידי' : 'אין פעולות זמינות'}
                 </p>
@@ -512,26 +589,27 @@ function DayCell({ day, cellColors, isToday, isSelected, currentPeriod, onClick 
     type          = 'normal',
   } = cellColors ?? {}
 
-  // Today with no halachic status → show live onah with indigo/amber
-  const effectNight = (isToday && type === 'normal')
-    ? (currentPeriod === 'night' ? 'bg-indigo-500' : 'bg-indigo-100')
-    : nightColor
-  const effectDay = (isToday && type === 'normal')
-    ? (currentPeriod === 'day' ? 'bg-amber-400' : 'bg-amber-50')
-    : dayColor
-  const effectText = (isToday && type === 'normal') ? 'text-gray-800' : dayText
+  // Today: keep original halachic colors, just add a ring around the cell.
+  // No background override — today is NOT a halachic status.
+  const effectNight = nightColor
+  const effectDay   = dayColor
+  const effectText  = dayText
 
   return (
     <button
       onClick={onClick}
       className={`w-full flex flex-row rounded-lg overflow-hidden focus:outline-none h-[3.75rem] ${
-        isSelected ? 'ring-2 ring-gray-800 shadow-md z-10 relative' : 'hover:brightness-95 active:brightness-90'
+        isSelected
+          ? 'ring-2 ring-gray-800 shadow-md z-10 relative'
+          : isToday
+            ? 'ring-2 ring-blue-400 z-10 relative'
+            : 'hover:brightness-95 active:brightness-90'
       }`}
     >
       {/* ── Night onah — RIGHT in RTL ── */}
       <div className={`w-2/5 flex flex-col items-center justify-center gap-0.5 ${effectNight}`}>
-        {isToday && currentPeriod === 'night' && type === 'normal' && (
-          <span className="w-1.5 h-1.5 rounded-full bg-white opacity-90 animate-pulse" />
+        {isToday && currentPeriod === 'night' && (
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 opacity-60 animate-pulse" />
         )}
         {nightConcerns.length > 0 && (
           <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
@@ -543,8 +621,8 @@ function DayCell({ day, cellColors, isToday, isSelected, currentPeriod, onClick 
         <span className={`text-sm font-bold leading-none ${effectText}`}>
           {DAY_LETTERS[day]}
         </span>
-        {isToday && currentPeriod === 'day' && type === 'normal' && (
-          <span className="w-1 h-1 rounded-full bg-amber-700 opacity-40 animate-pulse" />
+        {isToday && currentPeriod === 'day' && (
+          <span className="w-1 h-1 rounded-full bg-gray-400 opacity-50 animate-pulse" />
         )}
         {dayConcerns.length > 0 && (
           <span className="w-1 h-1 rounded-full bg-orange-400" />
@@ -568,15 +646,20 @@ export default function Dashboard() {
   const [location,  setLocation]  = useState(null)
   const [now, setNow]             = useState(new Date())
 
-  const [cycle,      setCycle]      = useState(null)
-  const [sightings,  setSightings]  = useState([])
-  const [dataLoaded, setDataLoaded] = useState(false)
-  const [error,      setError]      = useState(null)
+  const [cycle,        setCycle]        = useState(null)
+  const [sightings,    setSightings]    = useState([])
+  const [observations, setObservations] = useState([])
+  const [dataLoaded,   setDataLoaded]   = useState(false)
+  const [error,        setError]        = useState(null)
 
   const refresh = useCallback(async () => {
     try {
-      const [c, s] = await Promise.all([api.getCycle(), api.getSightings()])
-      setCycle(c); setSightings(s)
+      const [c, s, obs] = await Promise.all([
+        api.getCycle(),
+        api.getSightings(),
+        api.getVesetObservations(),
+      ])
+      setCycle(c); setSightings(s); setObservations(obs)
     } catch (err) { setError(err.message) }
     finally { setDataLoaded(true) }
   }, [])
@@ -616,7 +699,10 @@ export default function Dashboard() {
 
   const phase = useMemo(() => derivePhase(cycle), [cycle])
 
-  const vesetConcerns = useMemo(() => computeVesetConcerns(sightings), [sightings])
+  const vesetConcerns = useMemo(
+    () => computeVesetConcerns(sightings, observations),
+    [sightings, observations],
+  )
 
   const vesetMap = useMemo(() => {
     const map = {}
@@ -771,6 +857,7 @@ export default function Dashboard() {
           cellColors={selectedColors}
           cycle={cycle}
           sightings={sightings}
+          vesetConcerns={vesetConcerns}
           location={location}
           phase={phase}
           onClose={() => setSelected(null)}

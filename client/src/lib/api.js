@@ -31,4 +31,13 @@ export const api = {
 
   updateSettings: (payload) =>
     request('/cycle/settings', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // ── veset observations ──────────────────────────────────────────────────
+  getVesetObservations: () => request('/veset-observations'),
+
+  recordCleanPass: (payload) =>
+    request('/veset-observations', { method: 'POST', body: JSON.stringify(payload) }),
+
+  deleteObservation: (id) =>
+    request(`/veset-observations/${id}`, { method: 'DELETE' }),
 }

@@ -17,7 +17,7 @@ export const MONTH_NAMES = {
   13: 'אדר ב׳',
 }
 
-export const ONAH_HE = { day: 'יום', night: 'לילה', full_day: 'יממה שלמה' }
+export const ONAH_HE = { day: 'עונת היום', night: 'עונת הלילה', full_day: 'יממה שלמה' }
 
 const DAY_LETTERS = [
   '', 'א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י',
@@ -94,6 +94,13 @@ export function addHebrewDays(hd, n) {
 }
 
 // Advance to the same day in the next Hebrew month
+// Advance N Hebrew months (same day of month each step)
+export function addHebrewMonths(hd, n) {
+  let result = { ...hd }
+  for (let i = 0; i < n; i++) result = nextMonthSameDay(result)
+  return result
+}
+
 export function nextMonthSameDay(hd) {
   const jc = new JewishCalendar()
   jc.setJewishDate(hd.year, hd.month, 1)
