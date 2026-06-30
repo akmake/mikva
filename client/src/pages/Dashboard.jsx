@@ -20,6 +20,7 @@ import {
   currentCleanDayNumber,
 } from '../lib/cycleCalculator'
 import { computeVesetConcerns } from '../lib/vesetCalculator'
+import { mesulekesWindows } from '../lib/veset/mesulekes'
 
 // ── Hebrew helpers ──────────────────────────────────────────────────────────
 
@@ -273,6 +274,7 @@ function DaySheet({ hd, cellColors, cycle, sightings, vesetConcerns = [], locati
         gregorianDatetime: datetime.toISOString(),
         hebrewDate: hd,
         onah: computedOnah,
+        sourceType: 'veset', // TODO: בורר סוג ראייה (כתם/בדיקה/לידה...) בשלב UI
         lat, lng,
       })
       await onRefresh()
@@ -699,9 +701,20 @@ export default function Dashboard() {
 
   const phase = useMemo(() => derivePhase(cycle), [cycle])
 
+  // מפת הפסק טהרה לכל ראייה (לחישובי שוע"ר ולעקירת המשך-ראייה V-24)
+  const hefsekMap = useMemo(() => {
+    const m = {}
+    for (const s of sightings) if (s.hefsekTahara) m[s._id] = s.hefsekTahara
+    return m
+  }, [sightings])
+
+  const mesulekesWins = useMemo(() => mesulekesWindows(cycle ?? {}), [cycle])
+
   const vesetConcerns = useMemo(
-    () => computeVesetConcerns(sightings, observations),
-    [sightings, observations],
+    () => computeVesetConcerns(
+      sightings, observations, false, hefsekMap, false, 'tzemach_tzedek', mesulekesWins,
+    ),
+    [sightings, observations, hefsekMap, mesulekesWins],
   )
 
   const vesetMap = useMemo(() => {

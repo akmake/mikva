@@ -11,7 +11,7 @@ const hebrewDateSchema = new mongoose.Schema(
 const vesetObservationSchema = new mongoose.Schema({
   concernType: {
     type: String,
-    enum: ['ona_beinonit', 'chodesh', 'haflagah'],
+    enum: ['ona_beinonit', 'chodesh', 'haflagah', 'sirug', 'dilog'],
     required: true,
   },
   concernId: { type: String, required: true }, // e.g. 'chodesh', 'haflagah_30'

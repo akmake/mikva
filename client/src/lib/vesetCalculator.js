@@ -2,124 +2,124 @@ import { JewishCalendar } from 'kosher-zmanim'
 import {
   addHebrewDays,
   addHebrewMonths,
-  nextMonthSameDay,
   daysBetween,
   hebrewDateEquals,
   compareHebrewDates,
+  nextHebrewMonth,
+  daysInHebrewMonth,
+  hebrewDateToGregorian,
 } from './hebrewCalendar.js'
+import { countsForVeset } from './veset/sourceTypes.js'
+import { computeHaflagahConcerns, haflagaInterval } from './veset/haflagahEngine.js'
+import { computeChodeshConcerns, nextOccurrenceAfter } from './veset/chodeshEngine.js'
+import { computeDilugConcerns } from './veset/dilugEngine.js'
+import { inMesulekes } from './veset/mesulekes.js'
 
-// ── helpers ────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+//  אורקסטרטור חישוב הווסתות (פרק כד)
+//  בנוי כפונקציה טהורה המחשבת מחדש מכל ההיסטוריה.
+//  שלב נוכחי: עונה בינונית · ווסת החודש · ווסת ההפלגה (עם carry-forward) · סירוג
+//  טרם מומש (ראה מפת_כיסוי_הלכתית.md): דילוג, מעיין פתוח אוטומטי, עקירת קבוע
+//  ע"י בדיקה, שני קבועים, מסולקת מלאה, מקרים מיוחדים.
+// ═══════════════════════════════════════════════════════════════════════════
 
 function isLeap(year) {
   return JewishCalendar.isJewishLeapYear(year)
 }
 
-function sightingDaysBetween(a, b, useShuar = false, hefsekMap = {}) {
-  if (useShuar) {
-    const aHefsek = hefsekMap[a._id] ?? addHebrewDays(a.hebrewDate, 7)
-    return daysBetween(aHefsek, b.hebrewDate)
+// פונקציית "המופע הבא" לכל סוג חשש (לצורך עקירה רב-מופעית).
+function recurrenceFn(concern) {
+  switch (concern.type) {
+    case 'chodesh':
+      return (d) => nextOccurrenceAfter(d, concern.canonicalDay, concern.day30Policy)
+    case 'haflagah':
+      // לקבוע נעקר במשך 3× ההפלגה (כד,סב) — מודל: 3 מופעי interval עוקבים.
+      return (d) => addHebrewDays(d, concern.interval)
+    case 'sirug':
+      return (d) => addHebrewMonths(d, concern.skipMonths)
+    case 'dilog':
+      if (concern.dilugKind === 'haflagah')
+        return (d) => addHebrewDays(d, concern.dilugInterval)
+      // דילוג ימי החודש: חודש הבא, יום + Δ (עם גבולות)
+      return (d) => {
+        const nm = nextHebrewMonth(d.year, d.month)
+        const day = d.day + concern.dilugDelta
+        if (day < 1 || day > daysInHebrewMonth(nm.year, nm.month)) return null
+        return { year: nm.year, month: nm.month, day }
+      }
+    default:
+      return null // עונה בינונית ואחרים — אין מופע חוזר
   }
-  return daysBetween(a.hebrewDate, b.hebrewDate)
 }
 
-function trailingMonthCount(sorted, last) {
-  // Consider only sightings with matching day+onah, then count consecutive 1-month steps from the end
-  const sameDay = sorted.filter(
-    s => s.hebrewDate.day === last.hebrewDate.day && s.onah === last.onah,
-  )
-  let count = 1
-  for (let i = sameDay.length - 2; i >= 0; i--) {
-    const expected = nextMonthSameDay(sameDay[i].hebrewDate)
-    if (!hebrewDateEquals(expected, sameDay[i + 1].hebrewDate)) break
-    count++
-  }
-  return count
-}
-
-function trailingHaflagaCount(sorted, interval, useShuar, hefsekMap) {
-  let count = 0
-  for (let i = sorted.length - 1; i >= 1; i--) {
-    const diff = sightingDaysBetween(sorted[i - 1], sorted[i], useShuar, hefsekMap)
-    if (diff === interval && sorted[i].onah === sorted[sorted.length - 1].onah) count++
-    else break
-  }
-  return count
-}
-
-// ── uprooting logic ────────────────────────────────────────────────────────────
-
+// ── עקירה: forward-walk על תצפיות "עבר בנקיות" לאורך מופעים עוקבים ────────────
+// לא-קבוע נעקר במופע נקי אחד (כד,לח,מח); קבוע — בשלושה (כד,סב,סג — V-60).
+// מציג את המופע הראשון שטרם נבדק, עם ספירת העקירות שנצברו.
 function withUprootingStatus(concern, observations) {
-  const relObs = observations.filter(
-    o => o.concernId === concern.id &&
-         hebrewDateEquals(o.hebrewDate, concern.hebrewDate) &&
-         o.result === 'clean',
-  )
-  const cleanPasses    = relObs.length
-  const observationIds = relObs.map(o => o._id)
-
-  let needed, uprooted
-  if (concern.type === 'ona_beinonit') {
-    needed = 3; uprooted = false
-  } else if (concern.isKavua) {
-    needed = 3; uprooted = cleanPasses >= 3
-  } else {
-    needed = 1; uprooted = cleanPasses >= 1
+  // עו"ב ושאר חששות שאינם נעקרים (כד,יג — V-13)
+  if (concern.type === 'ona_beinonit' || !concern.canUproot) {
+    return { ...concern, cleanPasses: 0, needed: 0, uprooted: false, observationIds: [] }
   }
 
-  return { ...concern, cleanPasses, needed, uprooted, observationIds }
+  // קבוע ולחומרא — עקירה ב-3 (כד,סב/עז/פז); שאינו קבוע — ב-1 (כד,לח).
+  const needed  = (concern.isKavua || concern.isLechumra) ? 3 : 1
+  const advance = recurrenceFn(concern)
+  const cleanOn = (hd) => observations.filter(
+    o => o.concernId === concern.id && o.result === 'clean' &&
+         hebrewDateEquals(o.hebrewDate, hd),
+  )
+
+  let date  = concern.hebrewDate
+  let count = 0
+  const observationIds = []
+  let guard = 0
+  while (advance && date && guard++ < 12) {
+    const obs = cleanOn(date)
+    if (obs.length === 0) break          // מופע שטרם נבדק → זהו יום החשש המוצג
+    observationIds.push(...obs.map(o => o._id))
+    count += 1
+    if (count >= needed) break
+    date = advance(date)
+  }
+
+  return {
+    ...concern,
+    hebrewDate:   date ?? concern.hebrewDate,
+    cleanPasses:  count,
+    needed,
+    uprooted:     count >= needed,
+    observationIds,
+  }
 }
 
-// ── Adar helpers ───────────────────────────────────────────────────────────────
-
-/**
- * In a leap year, Adar I (12) and Adar II (13) are halachically interchangeable
- * for veset matching: a sighting in Adar I "counts" for an expected Adar II date
- * and vice-versa.
- */
+// ── עזרי אדר (שנה מעוברת: אדר א'/ב' מתחלפים) ─────────────────────────────────
 function fitsAdar(sm, em, year) {
   if (!isLeap(year)) return false
   return (sm === 12 && em === 13) || (sm === 13 && em === 12)
 }
 
-/** True if `sighting` matches expectedHD+onah, including Adar leniency. */
 function fitsExpected(sighting, expectedHD, expectedOnah) {
   if (sighting.onah !== expectedOnah) return false
   const shd = sighting.hebrewDate
   if (hebrewDateEquals(shd, expectedHD)) return true
   return (
-    shd.year  === expectedHD.year &&
-    shd.day   === expectedHD.day  &&
+    shd.year === expectedHD.year &&
+    shd.day  === expectedHD.day  &&
     fitsAdar(shd.month, expectedHD.month, expectedHD.year)
   )
 }
 
-/**
- * When a sirug next-date lands on Adar I of a leap year, we must ALSO warn
- * for Adar II (a woman who saw in Adar I must check both Adars in the next
- * occurrence year as well).  Returns 1 or 2 dates.
- */
 function expandAdar(hd) {
   if (hd.month === 12 && isLeap(hd.year)) return [hd, { ...hd, month: 13 }]
   return [hd]
 }
 
-// ── ווסת סירוג ─────────────────────────────────────────────────────────────────
-
-/**
- * Build the longest forward chain of sightings from `group` (oldest→newest)
- * where consecutive links are exactly `skip` Hebrew months apart, AND the chain
- * ends at `last` (the most recent sighting in this day/onah group).
- *
- * We try every starting point in the group and keep the longest chain that
- * terminates at `last`.
- */
+// ── ווסת סירוג (כד,עג–פב) — נשמר מהמימוש הקיים ───────────────────────────────
 function buildSirugChain(group, last, skip) {
   let best = []
-
   for (const start of group) {
     const chain = [start]
     let cur = start
-
     while (true) {
       const nextHD = addHebrewMonths(cur.hebrewDate, skip)
       const found  = group.find(s => s !== cur && fitsExpected(s, nextHD, start.onah))
@@ -127,29 +127,12 @@ function buildSirugChain(group, last, skip) {
       chain.push(found)
       cur = found
     }
-
     const tail = chain[chain.length - 1]
-    if (
-      fitsExpected(tail, last.hebrewDate, last.onah) &&
-      chain.length > best.length
-    ) best = chain
+    if (fitsExpected(tail, last.hebrewDate, last.onah) && chain.length > best.length) best = chain
   }
-
   return best
 }
 
-/**
- * Detect all ווסת סירוג patterns (skip = 2..6 months) in the sighting history.
- *
- * Rules applied here:
- * - Requires ≥ 2 sightings in the same pattern to generate a concern
- * - Becomes קבוע after 3 consecutive occurrences
- * - Adar I / Adar II are interchangeable (see `fitsExpected` and `expandAdar`)
- * - If ווסת חודש is already kavua for a given (day, onah), sirug concerns on
- *   that day are subsumed — we don't generate them separately
- * - Skips 1–6 month intervals; ווסת חודש (skip=1) is handled as its own type
- * - Deduplicates by (hebrewDate, onah) to avoid double-warnings from Adar expansion
- */
 function detectSirugConcerns(sorted, chodeshKavuaKeys, isMesulekes) {
   const concerns = []
   if (sorted.length < 2) return concerns
@@ -161,11 +144,11 @@ function detectSirugConcerns(sorted, chodeshKavuaKeys, isMesulekes) {
     groups.get(k).push(s)
   }
 
-  const generated = new Set() // dedup by `year-month-day|onah`
+  const generated = new Set()
 
   for (const [gk, group] of groups) {
     if (group.length < 2) continue
-    if (chodeshKavuaKeys.has(gk)) continue // subsumed by kavua ווסת חודש
+    if (chodeshKavuaKeys.has(gk)) continue
 
     const last = group[group.length - 1]
     const [dayStr, onah] = gk.split('|')
@@ -179,9 +162,10 @@ function detectSirugConcerns(sorted, chodeshKavuaKeys, isMesulekes) {
       const nextHD     = addHebrewMonths(chainLast.hebrewDate, skip)
       const nextDates  = expandAdar(nextHD)
       const kavuaCount = chain.length
-      const kavua      = !isMesulekes && kavuaCount >= 3
-
-      const skipLabel = skip === 2 ? 'כל חודשיים' : `כל ${skip} חודשים`
+      // V-71/V-77: 4 ראיות בסירוג = קבוע גמור; 3 = קבוע לחומרא בלבד.
+      const kavua      = !isMesulekes && kavuaCount >= 4
+      const lechumra   = !kavua && kavuaCount === 3
+      const skipLabel  = skip === 2 ? 'כל חודשיים' : `כל ${skip} חודשים`
 
       for (const nd of nextDates) {
         const dateKey = `${nd.year}-${nd.month}-${nd.day}|${onah}`
@@ -189,9 +173,8 @@ function detectSirugConcerns(sorted, chodeshKavuaKeys, isMesulekes) {
         generated.add(dateKey)
 
         const adarSuffix =
-          nd.month === 13                     ? ' (אדר ב׳)' :
-          nd.month === 12 && isLeap(nd.year)  ? ' (אדר א׳)' : ''
-
+          nd.month === 13                    ? ' (אדר ב׳)' :
+          nd.month === 12 && isLeap(nd.year) ? ' (אדר א׳)' : ''
         const id = `sirug_${skip}_d${day}_${onah}${nd.month === 13 ? '_adar2' : ''}`
 
         concerns.push({
@@ -201,6 +184,7 @@ function detectSirugConcerns(sorted, chodeshKavuaKeys, isMesulekes) {
           hebrewDate:  nd,
           onah,
           isKavua:     kavua,
+          isLechumra:  lechumra,
           kavuaCount,
           skipMonths:  skip,
           canUproot:   true,
@@ -209,21 +193,19 @@ function detectSirugConcerns(sorted, chodeshKavuaKeys, isMesulekes) {
       }
     }
   }
-
   return concerns
 }
 
-// ── main export ────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+//  Export ראשי
+// ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Compute all active veset concerns from sighting history,
- * enriched with uprooting status from stored observations.
- *
- * @param {Array}   sightings    - Sighting documents (oldest→newest)
- * @param {Array}   observations - VesetObservation documents (clean passes)
- * @param {boolean} useShuar     - haflagah method (שוע"ר vs נוהג)
- * @param {object}  hefsekMap    - { sightingId → hebrewDate }
- * @param {boolean} isMesulekes  - pregnancy / nursing flag
+ * @param {Array}   sightings    מסמכי ראייה
+ * @param {Array}   observations תצפיות "עבר בנקיות"
+ * @param {boolean} useShuar     שיטת הפלגה ראשית (שוע"ר / נוהג)
+ * @param {object}  hefsekMap    { sightingId → hebrewDate }
+ * @param {boolean} isMesulekes  הריון / מינקת
  */
 export function computeVesetConcerns(
   sightings,
@@ -231,110 +213,159 @@ export function computeVesetConcerns(
   useShuar     = false,
   hefsekMap    = {},
   isMesulekes  = false,
+  day30Policy  = 'tzemach_tzedek',
+  mesulekesWins = [],
+  onaBeinonit31 = false,
 ) {
   if (!sightings || sightings.length === 0) return []
 
-  const sorted = [...sightings].sort(
-    (a, b) => new Date(a.gregorianDatetime) - new Date(b.gregorianDatetime),
-  )
-  const last = sorted[sorted.length - 1]
-  const raw  = []
+  // ── סינון לפי סוג הראייה: רק דאורייתא נכנס לחישוב (כד,ג–ה — F-01..F-05) ──
+  const filtered = [...sightings]
+    .filter(countsForVeset)
+    .sort((a, b) => new Date(a.gregorianDatetime) - new Date(b.gregorianDatetime))
 
-  // ── 1. עונה בינונית ──────────────────────────────────────────────────────
-  raw.push({
-    id:         'ona_beinonit',
-    type:       'ona_beinonit',
-    label:      'עונה בינונית',
-    hebrewDate:  addHebrewDays(last.hebrewDate, 30),
-    onah:       'full_day',
-    isKavua:    false,
-    kavuaCount: 0,
-    canUproot:  true,
-    relatedSightingId: last._id,
-  })
-
-  // ── 2. ווסת החודש ─────────────────────────────────────────────────────────
-  const chodeshDate  = nextMonthSameDay(last.hebrewDate)
-  const chodeshCount = trailingMonthCount(sorted, last)
-  const chodeshKavua = !isMesulekes && chodeshCount >= 3
-
-  // Adar expansion: if chodesh date is Adar I in a leap year, also warn for Adar II
-  const chodeshDates = expandAdar(chodeshDate)
-  for (const cd of chodeshDates) {
-    const adarSuffix =
-      cd.month === 13                    ? ' (אדר ב׳)' :
-      cd.month === 12 && isLeap(cd.year) ? ' (אדר א׳)' : ''
-    raw.push({
-      id:         cd.month === 13 ? 'chodesh_adar2' : 'chodesh',
-      type:       'chodesh',
-      label:      `ווסת החודש${adarSuffix}`,
-      hebrewDate:  cd,
-      onah:        last.onah,
-      isKavua:     chodeshKavua,
-      kavuaCount:  chodeshCount,
-      canUproot:   true,
-      relatedSightingId: last._id,
-    })
-  }
-
-  // ── 3. ווסת ההפלגה ────────────────────────────────────────────────────────
-  if (sorted.length >= 2) {
-    const prev     = sorted[sorted.length - 2]
-    const interval = sightingDaysBetween(prev, last, useShuar, hefsekMap)
-
-    if (interval > 0) {
-      const haflagaCount = trailingHaflagaCount(sorted, interval, useShuar, hefsekMap)
-      const label = useShuar
-        ? `ווסת ההפלגה — ${interval} יום (שוע"ר)`
-        : `ווסת ההפלגה — ${interval} יום`
-
-      raw.push({
-        id:          `haflagah_${interval}`,
-        type:        'haflagah',
-        label,
-        hebrewDate:   addHebrewDays(last.hebrewDate, interval),
-        onah:         last.onah,
-        isKavua:     !isMesulekes && haflagaCount >= 3,
-        kavuaCount:   haflagaCount,
-        interval,
-        canUproot:   true,
-        relatedSightingId: last._id,
-      })
-
-      if (useShuar) {
-        const minhagInterval = daysBetween(prev.hebrewDate, last.hebrewDate)
-        if (minhagInterval !== interval && minhagInterval > 0) {
-          raw.push({
-            id:          `haflagah_minhag_${minhagInterval}`,
-            type:        'haflagah',
-            label:       `ווסת ההפלגה — ${minhagInterval} יום (נוהג)`,
-            hebrewDate:   addHebrewDays(last.hebrewDate, minhagInterval),
-            onah:         last.onah,
-            isKavua:     false,
-            kavuaCount:  1,
-            interval:    minhagInterval,
-            canUproot:   true,
-            relatedSightingId: last._id,
-          })
-        }
-      }
+  // ── מעיין פתוח (כד,נב,נח — V-50,55): ראיה בתוך 7 ימים מהקודמת היא אותה נידה
+  // (מעיין פתוח) ואינה ראיה חדשה לחישובי הווסת — מתחשבים רק בראיה הסתומה.
+  const counting = []
+  for (const s of filtered) {
+    if (!counting.length ||
+        daysBetween(counting[counting.length - 1].hebrewDate, s.hebrewDate) >= 7) {
+      counting.push(s)
     }
   }
 
-  // ── 4. ווסת סירוג ──────────────────────────────────────────────────────────
-  // Kavua ווסת חודש subsumes sirug on the same (day, onah)
+  if (counting.length === 0) return []
+
+  const last = counting[counting.length - 1]
+  const raw  = []
+
+  // מסולקת מדמים (V-90..V-95): אם הראייה האחרונה בחלון הסילוק — אינה קובעת (V-93).
+  const lastInWindow = inMesulekes(mesulekesWins, hebrewDateToGregorian(last.hebrewDate).getTime())
+  const mesulekes    = isMesulekes || lastInWindow
+
+  // ── ווסת החודש (כד,לד–מד) — מנוע carry-forward (V-20..V-28) ────────────────
   const chodeshKavuaKeys = new Set()
-  if (chodeshKavua) {
-    chodeshKavuaKeys.add(`${last.hebrewDate.day}|${last.onah}`)
+  for (const c of computeChodeshConcerns(counting, { isMesulekes: mesulekes, day30Policy, hefsekMap })) {
+    if (c.isKavua) chodeshKavuaKeys.add(`${c.canonicalDay}|${c.onah}`)
+    for (const cd of expandAdar(c.hebrewDate)) {
+      const adarSuffix =
+        cd.month === 13                    ? ' (אדר ב׳)' :
+        cd.month === 12 && isLeap(cd.year) ? ' (אדר א׳)' : ''
+      raw.push({
+        id:         `chodesh_d${c.canonicalDay}_${c.onah}${cd.month === 13 ? '_adar2' : ''}`,
+        type:       'chodesh',
+        label:      `ווסת החודש${adarSuffix}`,
+        hebrewDate:  cd,
+        canonicalDay: c.canonicalDay,
+        day30Policy,
+        onah:        c.onah,
+        isKavua:     c.isKavua,
+        kavuaCount:  c.kavuaCount,
+        canUproot:   true,
+        relatedSightingId: c.relatedSightingId,
+      })
+    }
   }
 
-  const sirugConcerns = detectSirugConcerns(sorted, chodeshKavuaKeys, isMesulekes)
-  raw.push(...sirugConcerns)
+  // ── ווסת ההפלגה (כד,מה–נא) — שיטה ראשית עם carry-forward ⭐ ────────────────
+  const primaryMethod   = useShuar ? 'shuar' : 'nohag'
+  const secondaryMethod = useShuar ? 'nohag' : 'shuar'
 
-  // Enrich every concern with uprooting status and sort by date
-  return raw
-    .map(c => withUprootingStatus(c, observations))
-    .sort((a, b) => compareHebrewDates(a.hebrewDate, b.hebrewDate))
+  for (const c of computeHaflagahConcerns(counting, primaryMethod, hefsekMap, mesulekes)) {
+    const methodTag = c.method === 'shuar' ? ' (שוע"ר)' : ''
+    raw.push({
+      id:          `haflagah_${c.method}_${c.interval}`,
+      type:        'haflagah',
+      label:       `ווסת ההפלגה — ${c.interval} יום${methodTag}`,
+      hebrewDate:   c.hebrewDate,
+      onah:         c.onah,
+      isKavua:      c.isKavua,
+      kavuaCount:   c.kavuaCount,
+      interval:     c.interval,
+      isPrimary:    c.isPrimary,
+      canUproot:    true,
+      relatedSightingId: c.relatedSightingId,
+    })
+  }
+
+  // השיטה המשנית (נוהג) — מוצגת רק לנוהגים כשוע"ר, ורק להפלגה האחרונה
+  // (לחומרא), בלי carry-forward מלא. נוהג-רגיל אינו חושש ליום השוע"ר.
+  if (useShuar && counting.length >= 2) {
+    const secInterval = haflagaInterval(
+      counting[counting.length - 2], last, secondaryMethod, hefsekMap,
+    )
+    const primInterval = haflagaInterval(
+      counting[counting.length - 2], last, primaryMethod, hefsekMap,
+    )
+    if (secInterval > 0 && secInterval !== primInterval) {
+      const methodTag = secondaryMethod === 'shuar' ? ' (שוע"ר)' : ' (נוהג)'
+      raw.push({
+        id:          `haflagah_${secondaryMethod}_${secInterval}`,
+        type:        'haflagah',
+        label:       `ווסת ההפלגה — ${secInterval} יום${methodTag}`,
+        hebrewDate:   addHebrewDays(last.hebrewDate, secInterval),
+        onah:         last.onah,
+        isKavua:      false,
+        kavuaCount:   1,
+        interval:     secInterval,
+        isSecondary:  true,
+        canUproot:    true,
+        relatedSightingId: last._id,
+      })
+    }
+  }
+
+  // ── ווסת סירוג (כד,עג–פב) — קבוע-חודש מסונן ע"י chodeshKavuaKeys ────────────
+  raw.push(...detectSirugConcerns(counting, chodeshKavuaKeys, mesulekes))
+
+  // ── ווסת דילוג (כד,פג–צה) ─────────────────────────────────────────────────
+  raw.push(...computeDilugConcerns(counting, primaryMethod, hefsekMap, mesulekes))
+
+  // ── העשרה בעקירה ───────────────────────────────────────────────────────────
+  let enriched = raw.map(c => withUprootingStatus(c, observations))
+
+  // V-95: חשש מראייה שלפני הסילוק שיום החשש שלו נופל בתוך חלון הסילוק → אינה חוששת.
+  // (חל רק כשהראייה האחרונה אינה בחלון — אחרת אלו חששותיה הנוכחיים, V-94.)
+  if (mesulekesWins.length && !lastInWindow) {
+    enriched = enriched.filter(
+      c => !inMesulekes(mesulekesWins, hebrewDateToGregorian(c.hebrewDate).getTime()),
+    )
+  }
+
+  // ── עונה בינונית (כד,כה–ל) ────────────────────────────────────────────────
+  // V-11: אינה נוצרת כל עוד יש ווסת קבוע *פעיל* (שטרם נעקר).
+  // V-15: חוזרת מיד כשהקבוע נעקר בפועל.
+  const anyActiveKavua = enriched.some(c => c.isKavua && !c.uprooted)
+  if (!anyActiveKavua) {
+    enriched.push(withUprootingStatus({
+      id:         'ona_beinonit',
+      type:       'ona_beinonit',
+      label:      'עונה בינונית',
+      hebrewDate:  addHebrewDays(last.hebrewDate, 30),
+      onah:       'full_day',
+      isKavua:    false,
+      kavuaCount: 0,
+      canUproot:  false,
+      relatedSightingId: last._id,
+    }, observations))
+
+    // V-12: חומרת יום ל"א (הגדרה). פרישה ביום ל"א בעונת הראייה בלבד (כד,כט).
+    if (onaBeinonit31) {
+      enriched.push(withUprootingStatus({
+        id:         'ona_beinonit_31',
+        type:       'ona_beinonit',
+        label:      'עונה בינונית (יום ל"א)',
+        hebrewDate:  addHebrewDays(last.hebrewDate, 31),
+        onah:        last.onah,
+        isKavua:    false,
+        kavuaCount: 0,
+        canUproot:  false,
+        relatedSightingId: last._id,
+      }, observations))
+    }
+  }
+
+  return enriched.sort((a, b) => compareHebrewDates(a.hebrewDate, b.hebrewDate))
 }
 
 export function upcomingConcerns(concerns, todayHD, withinDays = 60) {

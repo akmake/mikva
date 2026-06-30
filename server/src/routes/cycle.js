@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import Cycle from '../models/Cycle.js'
+import Sighting from '../models/Sighting.js'
 
 const router = Router()
 
@@ -27,6 +28,11 @@ router.post('/hefsek-tahara', async (req, res) => {
     cycle.phase = 'counting_7'
     cycle.cleanDays = []
     await cycle.save()
+
+    // חותם את תאריך ההפסק על הראייה שפתחה מחזור זה (לחישובי ווסת — שוע"ר, V-24)
+    const sid = cycle.latestSighting?._id ?? cycle.latestSighting
+    if (sid) await Sighting.findByIdAndUpdate(sid, { hefsekTahara: hebrewDate })
+
     res.json(cycle)
   } catch (err) {
     res.status(400).json({ error: err.message })

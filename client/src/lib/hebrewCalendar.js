@@ -114,6 +114,28 @@ export function nextMonthSameDay(hd) {
   return addHebrewDays(firstOfNext, targetDay - 1)
 }
 
+// מספר הימים בחודש עברי (29 או 30)
+export function daysInHebrewMonth(year, month) {
+  const jc = new JewishCalendar()
+  jc.setJewishDate(year, month, 1)
+  return jc.getDaysInJewishMonth()
+}
+
+// החודש העברי הבא (סדר השנה: ניסן=1..אלול=6, תשרי=7..אדר=12/13)
+export function nextHebrewMonth(year, month) {
+  const leap = JewishCalendar.isJewishLeapYear(year)
+  if (month === 6)  return { year: year + 1, month: 7 } // אלול → תשרי (שנה הבאה)
+  if (month === 12) return leap ? { year, month: 13 } : { year, month: 1 } // אדר → ניסן / אדר ב'
+  if (month === 13) return { year, month: 1 }            // אדר ב' → ניסן
+  return { year, month: month + 1 }
+}
+
+// השוואה כרונולוגית אמיתית (compareHebrewDates משווה year/month/day ואינו
+// נכון מעבר לגבול תשרי). מחזיר חיובי אם a מאוחר מ-b.
+export function chronCompare(a, b) {
+  return daysBetween(b, a)
+}
+
 export function compareHebrewDates(a, b) {
   if (a.year  !== b.year)  return a.year  - b.year
   if (a.month !== b.month) return a.month - b.month

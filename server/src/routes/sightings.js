@@ -15,12 +15,13 @@ router.get('/', async (_req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { gregorianDatetime, hebrewDate, onah, isOpenSource, lat, lng, notes } = req.body
+    const { gregorianDatetime, hebrewDate, onah, sourceType, isOpenSource, lat, lng, notes } = req.body
 
     const sighting = await Sighting.create({
       gregorianDatetime: new Date(gregorianDatetime),
       hebrewDate,
       onah,
+      sourceType: sourceType ?? 'veset',
       isOpenSource: isOpenSource ?? false,
       lat, lng, notes,
     })
