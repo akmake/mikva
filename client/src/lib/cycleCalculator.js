@@ -3,7 +3,6 @@ import {
   nextMonthSameDay,
   hebrewDateToGregorian,
   getZmanimForDate,
-  compareHebrewDates,
   hebrewDateEquals,
   daysBetween,
   todayHebrew,
@@ -22,9 +21,11 @@ export function firstCleanDay(hefsekHD) {
   return addHebrewDays(hefsekHD, 1)
 }
 
-// Planned mikveh = night of day 8 after hefsek (i.e. after 7 clean days)
-export function plannedMikvehDay(hefsekHD) {
-  return addHebrewDays(hefsekHD, 8)
+// Planned mikveh = the night AFTER the day the count completes (tovelDay).
+// tovelDay is the day-number (from hefsek) on which the 7-clean window closes;
+// default 7 → night of day 8, matching the classic case.
+export function plannedMikvehDay(hefsekHD, tovelDay = 7) {
+  return addHebrewDays(hefsekHD, tovelDay + 1)
 }
 
 // { earliest, latest } Date objects for hefsek tahara window on a given Hebrew date
@@ -73,7 +74,9 @@ export function derivePhase(cycle) {
   if (phase === 'waiting_5_days' && latestSighting) {
     const earliest = hefsekTaharaDay(latestSighting.hebrewDate)
     const today    = todayHebrew()
-    if (compareHebrewDates(today, earliest) >= 0) return 'waiting_hefsek'
+    // השוואה כרונולוגית (ספירת ימים) — compareHebrewDates שגוי מעבר לגבול תשרי
+    // וגרם שמיום 5 ואילך המצב לא עבר ל"ממתינה להפסק" (בעיקר בראיות עבר).
+    if (daysBetween(earliest, today) >= 0) return 'waiting_hefsek'
     return 'waiting_5_days'
   }
 

@@ -26,10 +26,13 @@ router.post('/', async (req, res) => {
       lat, lng, notes,
     })
 
-    // Transition cycle to waiting_5_days
+    // מעבר מצב המחזור. אם הדם הופיע כשהאישה כבר בתוך/אחרי ספירת ה-7 נקיים
+    // (כלומר כבר פרושה) — אין חשש שכבת זרע ולכן *אין* 5 ימים מחדש: היא עושה
+    // הפסק טהרה בהזדמנות הראשונה. רק דם ממצב טהרה מתחיל המתנת 5 ימים.
     let cycle = await Cycle.findOne()
     if (!cycle) cycle = new Cycle()
-    cycle.phase = 'waiting_5_days'
+    const midCount = cycle.phase === 'counting_7' || cycle.phase === 'waiting_mikveh'
+    cycle.phase = midCount ? 'waiting_hefsek' : 'waiting_5_days'
     cycle.latestSighting = sighting._id
     cycle.hefsekTahara = undefined
     cycle.cleanDays = []

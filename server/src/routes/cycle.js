@@ -55,11 +55,9 @@ router.post('/bedika', async (req, res) => {
     else if (type === 'evening') day.eveningCheck = result
     else if (type === 'moch') day.mochCheck = result
 
-    // If day 7 has at least one clean check → ready for mikveh
-    const day7 = cycle.cleanDays.find(d => d.dayNumber === 7)
-    if (day7 && (day7.morningCheck === 'clean' || day7.eveningCheck === 'clean')) {
-      cycle.phase = 'waiting_mikveh'
-    }
+    // הערכת השלמת הספירה נעשית בקליינט ע"י evaluateCleanDays (מנוע חלון [ראשון,שביעי],
+    // כולל איפוס כשנמצא דם בתווך). כאן רק אחסון — נשארים ב-counting_7.
+    cycle.phase = 'counting_7'
 
     cycle.markModified('cleanDays')
     await cycle.save()
@@ -86,12 +84,18 @@ router.post('/mikveh', async (req, res) => {
 // POST /api/cycle/settings  (pregnancy / meineket / etc.)
 router.post('/settings', async (req, res) => {
   try {
-    const { isPregnant, pregnancyStart, isMeineket, meinaketStart } = req.body
+    const {
+      isPregnant, pregnancyStart, isMeineket, meinaketStart,
+      useShuar, onaBeinonit31, day30Policy,
+    } = req.body
     const cycle = await getOrCreate()
     if (isPregnant !== undefined) cycle.isPregnant = isPregnant
     if (pregnancyStart !== undefined) cycle.pregnancyStart = pregnancyStart ? new Date(pregnancyStart) : undefined
     if (isMeineket !== undefined) cycle.isMeineket = isMeineket
     if (meinaketStart !== undefined) cycle.meinaketStart = meinaketStart ? new Date(meinaketStart) : undefined
+    if (useShuar !== undefined) cycle.useShuar = useShuar
+    if (onaBeinonit31 !== undefined) cycle.onaBeinonit31 = onaBeinonit31
+    if (day30Policy !== undefined) cycle.day30Policy = day30Policy
     await cycle.save()
     res.json(cycle)
   } catch (err) {
