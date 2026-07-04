@@ -95,6 +95,18 @@ test('שיטת שוע"ר מול נוהג נותנות interval שונה', () => 
   assert.equal(sInt, 13, 'שוע"ר: סוף(יום 7)→תחילה = 13')
 })
 
+test('שוע"ר: יום החשש הבא מעוגן בהפסק האחרון + interval (לא בתחילת הראייה)', () => {
+  const s = [sighting(0), sighting(20)]
+  // הפסק של הראייה השנייה ביום 24 (יום 20 + 4 = חמישי לספירה)
+  const hefsekMap = { [s[1]._id]: addHebrewDays(BASE, 24) }
+  const shuar = computeVesetConcerns(s, [], true, hefsekMap)
+  const hafl  = shuar.find(c => c.type === 'haflagah' && c.isPrimary)
+  // interval שוע"ר = סוף ראייה קודמת (יום 0+7) → תחילת השנייה (יום 20) = 13
+  assert.equal(hafl.interval, 13)
+  // הניבוי: הפסק אחרון (יום 24) + 13 = יום 37 — ולא תחילת הראייה (יום 20) + 13 = 33
+  assert.deepEqual(hafl.hebrewDate, addHebrewDays(hefsekMap[s[1]._id], 13))
+})
+
 // ── ווסת החודש ───────────────────────────────────────────────────────────────
 const NISAN = 1, IYAR = 2
 
@@ -321,6 +333,16 @@ test('עונה בינונית יום ל"א (הגדרה V-12)', () => {
   const s = [sighting(0), sighting(25)]
   const c = computeVesetConcerns(s, [], false, {}, false, 'tzemach_tzedek', [], true)
   assert.equal(c.filter(x => x.type === 'ona_beinonit').length, 2, 'יום 30 + יום 31')
+})
+
+test('עונה בינונית = ראייה + 29 (יום ל\'), ויום ל"א = ראייה + 30', () => {
+  const s = [sighting(0), sighting(25)] // ראייה אחרונה ביום 25 מ-BASE
+  const c = computeVesetConcerns(s, [], false, {}, false, 'tzemach_tzedek', [], true)
+  const ob   = c.find(x => x.id === 'ona_beinonit')
+  const ob31 = c.find(x => x.id === 'ona_beinonit_31')
+  // יום ל' = תחילת הראייה נספרת כיום 1 → +29 (לא +30)
+  assert.deepEqual(ob.hebrewDate,   addHebrewDays(s[1].hebrewDate, 29), 'עו"ב = +29')
+  assert.deepEqual(ob31.hebrewDate, addHebrewDays(s[1].hebrewDate, 30), 'יום ל"א = +30')
 })
 
 // ── מנוע שבעה נקיים (פרק יז) ──────────────────────────────────────────────────

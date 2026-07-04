@@ -15,8 +15,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import com.example.myapplication.ui.theme.MyApplicationTheme
 import com.example.myapplication.halacha.*
 import com.example.myapplication.network.ZmanimResult
 import java.util.Calendar
@@ -47,7 +51,6 @@ private data class CellStatus(
 
 private fun cellStatus(hd: HebrewDate, st: com.example.myapplication.data.AppState, clean: CleanState): CellStatus {
     val cycle = st.cycle
-    // ראייה — צובע רק את העונה שבה הייתה הראייה
     val sight = st.sightings.firstOrNull { it.hebrewDate == hd }
     if (sight != null) {
         return when (sight.onah) {
@@ -89,10 +92,56 @@ private fun cellStatus(hd: HebrewDate, st: com.example.myapplication.data.AppSta
     return CellStatus(CNightDefault, CDayDefault, "normal", null)
 }
 
+
+@Preview(showBackground = true)
+@Composable
+fun CalendarPreview() {
+    MyApplicationTheme {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            val today = HebrewCalendar.today()
+            val state = com.example.myapplication.data.AppState()
+            CalendarScreenContent(
+                state = state,
+                today = today,
+                zmanimProvider = { _ -> null },
+                onRecordSighting = { _, _, _, _ -> },
+                onDoHefsek = {},
+                onDoBedika = { _, _, _, _ -> },
+                onDoMikveh = {}
+            )
+        }
+    }
+}
+
 @Composable
 fun CalendarScreen(vm: MikvaViewModel) {
     val state by vm.state.collectAsState()
     val today = remember { HebrewCalendar.today() }
+    val location by vm.location.collectAsState()
+
+    CalendarScreenContent(
+        state = state,
+        today = today,
+        zmanimProvider = { vm.zmanimFor(it) },
+        onRecordSighting = { hd, onah, type, millis ->
+            vm.recordSighting(hd, onah, type, millis, location.lat, location.lng)
+        },
+        onDoHefsek = { vm.doHefsek(it) },
+        onDoBedika = { dayNum, hd, type, res -> vm.doBedika(dayNum, hd, type, res) },
+        onDoMikveh = { vm.doMikveh() }
+    )
+}
+
+@Composable
+fun CalendarScreenContent(
+    state: com.example.myapplication.data.AppState,
+    today: HebrewDate,
+    zmanimProvider: suspend (HebrewDate) -> ZmanimResult?,
+    onRecordSighting: (HebrewDate, Onah, SourceType, Long) -> Unit,
+    onDoHefsek: (HebrewDate) -> Unit,
+    onDoBedika: (Int, HebrewDate, String, com.example.myapplication.halacha.CheckResult) -> Unit,
+    onDoMikveh: () -> Unit
+) {
     var dispYear by remember { mutableIntStateOf(today.year) }
     var dispMonth by remember { mutableIntStateOf(today.month) }
     var selected by remember { mutableStateOf<HebrewDate?>(null) }
@@ -102,72 +151,81 @@ fun CalendarScreen(vm: MikvaViewModel) {
     val effectivePhase = remember(phase, cleanState) { CycleEngine.effectivePhase(phase, cleanState) }
 
     Box(Modifier.fillMaxSize()) {
-      Surface(color = Color(0xFFF7F7F4)) {
-        Column(Modifier.fillMaxSize().padding(top = 24.dp)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("היומן שלי", fontSize = 12.sp, color = Color(0xFF718078))
-                    Text("מקווה", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF18352C))
+        Surface(color = Color(0xFFF7F7F4)) {
+            Column(Modifier.fillMaxSize().padding(top = 24.dp)) {
+                HeaderSection()
+                
+                // כותרת + ניווט חודשים
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilledTonalButton(onClick = {
+                        val p = HebrewCalendar.prevMonth(dispYear, dispMonth); dispYear = p.year; dispMonth = p.month
+                    }) { Text("‹", fontSize = 22.sp) }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(HebrewCalendar.monthName(dispYear, dispMonth), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text(HebrewCalendar.formatYear(dispYear), fontSize = 13.sp, color = Color.Gray)
+                    }
+                    FilledTonalButton(onClick = {
+                        val n = HebrewCalendar.nextMonth(dispYear, dispMonth); dispYear = n.year; dispMonth = n.month
+                    }) { Text("›", fontSize = 22.sp) }
                 }
-                Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFFE5EFEA)) {
-                    Text("פרטי ומאובטח", Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        fontSize = 11.sp, color = Color(0xFF315F50), fontWeight = FontWeight.Medium)
+
+                PhaseBanner(effectivePhase, state.cycle, cleanState, today)
+
+                // כותרות ימי שבוע
+                val headers = listOf("א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "שב׳")
+                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    headers.forEach {
+                        Text(it, Modifier.weight(1f), textAlign = TextAlign.Center, color = Color.Gray, fontSize = 12.sp)
+                    }
                 }
-            }
-            // כותרת + ניווט חודשים
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                FilledTonalButton(onClick = {
-                    val p = HebrewCalendar.prevMonth(dispYear, dispMonth); dispYear = p.year; dispMonth = p.month
-                }) { Text("‹", fontSize = 22.sp) }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(HebrewCalendar.monthName(dispYear, dispMonth), fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text(HebrewCalendar.formatYear(dispYear), fontSize = 13.sp, color = Color.Gray)
-                }
-                FilledTonalButton(onClick = {
-                    val n = HebrewCalendar.nextMonth(dispYear, dispMonth); dispYear = n.year; dispMonth = n.month
-                }) { Text("›", fontSize = 22.sp) }
-            }
 
-            // באנר שלב
-            PhaseBanner(effectivePhase, state.cycle, cleanState, today)
-
-            // כותרות ימי שבוע
-            val headers = listOf("א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "שב׳")
-            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
-                headers.forEach {
-                    Text(it, Modifier.weight(1f), textAlign = TextAlign.Center, color = Color.Gray, fontSize = 12.sp)
-                }
-            }
-
-            // רשת
-            MonthGrid(dispYear, dispMonth, today, selected, state, cleanState) { selected = it }
-        }
-      }
-
-      // דף פעולות יומי — מעוגן לתחתית עם רקע כהה
-      selected?.let { sel ->
-        Box(
-            Modifier.fillMaxSize().background(Color(0x40000000)).clickable { selected = null },
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            Box(Modifier.clickable(enabled = false) {}) {
-                DaySheet(
-                    vm = vm, hd = sel, state = state, cleanState = cleanState,
-                    effectivePhase = effectivePhase, today = today,
-                    onClose = { selected = null },
-                )
+                MonthGrid(dispYear, dispMonth, today, selected, state, cleanState) { selected = it }
             }
         }
-      }
+
+        selected?.let { sel ->
+            Box(
+                Modifier.fillMaxSize().background(Color(0x40000000)).clickable { selected = null },
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                Box(Modifier.clickable(enabled = false) {}) {
+                    DaySheetContent(
+                        hd = sel, state = state, cleanState = cleanState,
+                        effectivePhase = effectivePhase, today = today,
+                        zmanimProvider = zmanimProvider,
+                        onClose = { selected = null },
+                        onRecordSighting = onRecordSighting,
+                        onDoHefsek = onDoHefsek,
+                        onDoBedika = onDoBedika,
+                        onDoMikveh = onDoMikveh
+                    )
+                }
+            }
+        }
     }
 }
+
+@Composable
+private fun HeaderSection() {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("היומן שלי", fontSize = 12.sp, color = Color(0xFF718078))
+            Text("מקווה", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF18352C))
+        }
+        Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFFE5EFEA)) {
+            Text("פרטי ומאובטח", Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                fontSize = 11.sp, color = Color(0xFF315F50), fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
 
 @Composable
 private fun PhaseBanner(phase: Phase, cycle: Cycle, clean: CleanState, today: HebrewDate) {
@@ -215,7 +273,7 @@ private fun MonthGrid(
     onSelect: (HebrewDate) -> Unit,
 ) {
     val firstFixed = HebrewDate(year, month, 1).fixed
-    val lead = ((firstFixed % 7) + 7) % 7   // 0=ראשon
+    val lead = ((firstFixed % 7) + 7) % 7
     val total = HebrewCalendar.daysInMonth(year, month)
     val cells = buildList {
         repeat(lead) { add(null) }
@@ -254,9 +312,7 @@ private fun DayCell(hd: HebrewDate, status: CellStatus, isToday: Boolean, isSele
             .background(border).padding(if (border == Color.Transparent) 0.dp else 2.dp)
             .clip(RoundedCornerShape(7.dp)).clickable { onClick() },
     ) {
-        // עונת לילה — ימין ב-RTL
         Box(Modifier.fillMaxHeight().weight(0.4f).background(status.nightColor))
-        // עונת יום — נושא את מספר היום
         Box(Modifier.fillMaxHeight().weight(0.6f).background(status.dayColor), contentAlignment = Alignment.Center) {
             Text(HebrewCalendar.dayLetters(hd.day), fontSize = 14.sp, fontWeight = FontWeight.Bold,
                 color = Color(0xFF1F2937))
@@ -264,15 +320,19 @@ private fun DayCell(hd: HebrewDate, status: CellStatus, isToday: Boolean, isSele
     }
 }
 
-// ── דף פעולות יומי ────────────────────────────────────────────────────────────
-
 @Composable
-private fun DaySheet(
-    vm: MikvaViewModel, hd: HebrewDate, state: com.example.myapplication.data.AppState,
-    cleanState: CleanState, effectivePhase: Phase, today: HebrewDate, onClose: () -> Unit,
+private fun DaySheetContent(
+    hd: HebrewDate, state: com.example.myapplication.data.AppState,
+    cleanState: CleanState, effectivePhase: Phase, today: HebrewDate,
+    zmanimProvider: suspend (HebrewDate) -> ZmanimResult?,
+    onClose: () -> Unit,
+    onRecordSighting: (HebrewDate, Onah, SourceType, Long) -> Unit,
+    onDoHefsek: (HebrewDate) -> Unit,
+    onDoBedika: (Int, HebrewDate, String, com.example.myapplication.halacha.CheckResult) -> Unit,
+    onDoMikveh: () -> Unit
 ) {
     var zmanim by remember(hd) { mutableStateOf<ZmanimResult?>(null) }
-    LaunchedEffect(hd) { zmanim = vm.zmanimFor(hd) }
+    LaunchedEffect(hd) { zmanim = zmanimProvider(hd) }
 
     val cycle = state.cycle
     val status = cellStatus(hd, state, cleanState)
@@ -309,11 +369,9 @@ private fun DaySheet(
             }
             Spacer(Modifier.height(8.dp))
 
-            // זמני עונות
             OnahTimes(zmanim)
             Spacer(Modifier.height(12.dp))
 
-            // אירועים
             when (status.type) {
                 "hefsek" -> EventCard(CAmber, "הפסק טהרה", null)
                 "clean", "clean_7" -> EventCard(CEmerald400,
@@ -344,21 +402,20 @@ private fun DaySheet(
                         val onah = computedOnah ?: return@SightingForm
                         val g = HebrewCalendar.fixedToGreg(hd.fixed)
                         val millis = localMillis(g, timeInput, zmanim?.tz ?: "Asia/Jerusalem")
-                        val loc = vm.location.value
-                        vm.recordSighting(hd, onah, sourceType, millis, loc.lat, loc.lng)
+                        onRecordSighting(hd, onah, sourceType, millis)
                         view = "main"; selectedHour = null; selectedMinute = null
                         manualOnah = null; sourceType = SourceType.VESET
                     },
                 )
                 "bedika" -> BedikaForm(status.dayNum,
-                    onResult = { type, res -> vm.doBedika(status.dayNum ?: 0, hd, type, res) },
+                    onResult = { type, res -> onDoBedika(status.dayNum ?: 0, hd, type, res) },
                     onClose = { view = "main" })
                 else -> MainActions(
                     canSighting, canHefsek, canBedika, canMikveh, isBlocked, isFuture,
                     onSighting = { view = "sighting" },
-                    onHefsek = { vm.doHefsek(hd); onClose() },
+                    onHefsek = { onDoHefsek(hd); onClose() },
                     onBedika = { view = "bedika" },
-                    onMikveh = { vm.doMikveh(); onClose() },
+                    onMikveh = { onDoMikveh(); onClose() },
                 )
             }
             Spacer(Modifier.height(24.dp))
@@ -486,7 +543,6 @@ private fun TimePickerDialog(
 
 @Composable
 private fun FlowRowChips(selected: SourceType, onSelect: (SourceType) -> Unit) {
-    // שורה נגללת אופקית של סוגי ראייה
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)
         .horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         SourceType.entries.forEach { s ->

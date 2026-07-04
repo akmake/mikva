@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { JewishCalendar, ComplexZmanimCalendar, GeoLocation, ZmanimFormatter, DateTime } from 'kosher-zmanim'
 import tzlookup from 'tz-lookup'
 import { api } from '../lib/api'
@@ -14,14 +14,11 @@ import {
   plannedMikvehDay,
   hefsekWindow,
   bedikaWindows,
-  derivePhase,
   daysUntilHefsekAllowed,
   currentCleanDayNumber,
 } from '../lib/cycleCalculator'
-import { computeVesetConcerns } from '../lib/vesetCalculator'
-import { evaluateCleanDays } from '../lib/cleanDaysEngine'
 import { SOURCE_LABEL, SOURCE_TYPE } from '../lib/veset/sourceTypes'
-import { mesulekesWindows } from '../lib/veset/mesulekes'
+import { useMikvaEngine } from '../lib/useMikvaEngine'
 
 // ── Hebrew helpers ──────────────────────────────────────────────────────────
 
@@ -100,7 +97,7 @@ function fmt(date, tz) {
 // dayColor    = color for the left (day) half
 // nightConcerns / dayConcerns = veset concerns split by onah
 
-function getCellColors(hd, sightings, cycle, vesetMap, cleanState) {
+export function getCellColors(hd, sightings, cycle, vesetMap, cleanState) {
   const k = `${hd.year}-${hd.month}-${hd.day}`
   const allConcerns = vesetMap[k] ?? []
   // Only show dots for ACTIVE (non-uprooted) concerns
@@ -125,10 +122,20 @@ function getCellColors(hd, sightings, cycle, vesetMap, cleanState) {
     return { nightColor, dayColor, dayText, nightConcerns, dayConcerns, type: 'sighting', dayNum }
   }
 
-  // ── 5-day wait: both onahs are tamei ──
+  // ── ימי טומאה: רצף אדום מהראייה הראשונה ועד ההפסק טהרה האחרון שנעשה ──
+  // מכסה גם שבירת ספירה באמצע ה-7 (נמצא דם): כל הימים אדומים עד ההפסק האחרון,
+  // וממנו והלאה מתחילה ספירה חדשה (ירוק). onset = cycle.latestSighting (הדם הראשון).
   if (cycle?.latestSighting?.hebrewDate) {
-    const diff = daysBetween(cycle.latestSighting.hebrewDate, hd)
-    if (diff > 0 && diff <= 4 && (cycle.phase === 'waiting_5_days' || cycle.phase === 'waiting_hefsek')) {
+    const onset      = cycle.latestSighting.hebrewDate
+    const hefsekHD   = cycle?.hefsekTahara?.hebrewDate
+    const afterOnset = daysBetween(onset, hd) > 0
+    const inTamei = hefsekHD
+      // הדם הראשון < יום < ההפסק האחרון (יום ההפסק עצמו נצבע כתום בהמשך)
+      ? afterOnset && daysBetween(hd, hefsekHD) > 0
+      // עוד לא נעשה הפסק — טמאה מהראייה ועד היום
+      : afterOnset && (cycle.phase === 'waiting_5_days' || cycle.phase === 'waiting_hefsek')
+          && daysBetween(hd, todayHebrew()) >= 0
+    if (inTamei) {
       return { nightColor: 'bg-rose-200', dayColor: 'bg-rose-100', dayText: 'text-rose-900',
                nightConcerns, dayConcerns, type: 'waiting', dayNum: null }
     }
@@ -182,13 +189,23 @@ function getCellColors(hd, sightings, cycle, vesetMap, cleanState) {
     }
   }
 
+  // ── חשש ווסת (עתידי/רגיל): צובע את חצי-העונה שבו נופל החשש ברקע כתום רך ──
+  if (nightConcerns.length > 0 || dayConcerns.length > 0) {
+    return {
+      nightColor: nightConcerns.length ? 'bg-orange-200' : 'bg-slate-100',
+      dayColor:   dayConcerns.length   ? 'bg-orange-100' : 'bg-white',
+      dayText:    dayConcerns.length   ? 'text-orange-900' : 'text-gray-800',
+      nightConcerns, dayConcerns, type: 'concern', dayNum: null,
+    }
+  }
+
   return { nightColor: 'bg-slate-100', dayColor: 'bg-white', dayText: 'text-gray-800',
            nightConcerns, dayConcerns, type: 'normal', dayNum: null }
 }
 
 // ── Phase banner config ─────────────────────────────────────────────────────
 
-const PHASE_CFG = {
+export const PHASE_CFG = {
   tahorah:        { label: 'טהורה',              bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700' },
   waiting_5_days: { label: 'ימי המתנה',          bg: 'bg-rose-50',    border: 'border-rose-200',    text: 'text-rose-700'    },
   waiting_hefsek: { label: 'ממתינה להפסק טהרה', bg: 'bg-amber-50',   border: 'border-amber-200',   text: 'text-amber-700'   },
@@ -197,9 +214,30 @@ const PHASE_CFG = {
   blocked:        { label: 'נמצא דם — הספירה נפסקה', bg: 'bg-rose-50', border: 'border-rose-300',    text: 'text-rose-700'    },
 }
 
+// Short one-line detail shown next to the phase label. Shared by both pages.
+export function phaseDetailText(cycle, effectivePhase, cleanState) {
+  if (!cycle) return null
+  if (effectivePhase === 'waiting_5_days' && cycle.latestSighting) {
+    const d = daysUntilHefsekAllowed(cycle.latestSighting.hebrewDate)
+    return d === 0 ? 'הפסק טהרה אפשרי היום' : `עוד ${d} ימים`
+  }
+  if (effectivePhase === 'blocked') {
+    return 'יש לעשות הפסק טהרה חדש ולהתחיל ספירה'
+  }
+  if (effectivePhase === 'counting_7' && cycle.hefsekTahara) {
+    const n = currentCleanDayNumber(cycle.hefsekTahara.hebrewDate)
+    return n ? `יום ${n} מ-7` : null
+  }
+  if (effectivePhase === 'waiting_mikveh' && cycle.hefsekTahara) {
+    const m = plannedMikvehDay(cycle.hefsekTahara.hebrewDate, cleanState.tovelDay)
+    return `מקווה: ליל ${DAY_LETTERS[m.day]} ${MONTH_NAMES[m.month]}`
+  }
+  return null
+}
+
 // ── Day detail bottom sheet ─────────────────────────────────────────────────
 
-function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns = [], location, phase, onClose, onRefresh }) {
+export function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns = [], location, phase, onClose, onRefresh }) {
   const [view, setView]         = useState('main')
   const [timeInput, setTimeInput] = useState('')
   const [sourceType, setSourceType] = useState(SOURCE_TYPE.VESET)
@@ -255,9 +293,11 @@ function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns 
   // הפסק טהרה: רגיל (סוף 5 ימים) או הפסק *חדש* לאחר שנמצא דם בספירה (blocked)
   const canDoHefsek       = ((phase === 'waiting_hefsek' && !cycle?.hefsekTahara) || isBlocked) && !isFuture
   const canRecordBedika   = phase === 'counting_7' && (dayType === 'clean' || dayType === 'clean_7') && !isFuture
-  // טבילה רק כשמנוע הבדיקות אישר השלמה בפועל. זמין גם על תא ליל הטבילה עצמו
-  // (שהוא "עתידי" ביום אחד לפי התאריך העברי, אך הטבילה בלילה שלו).
-  const canRecordMikveh   = phase === 'waiting_mikveh' && (!isFuture || dayType === 'mikveh_planned')
+  // טבילה — זמינה כשיש הפסק טהרה ובמהלך/סיום ספירת ה-7 (כולל למפרע). זמין גם על
+  // תא ליל הטבילה עצמו (שהוא "עתידי" ביום אחד לפי התאריך העברי, אך הטבילה בלילה שלו).
+  const canRecordMikveh   = !!cycle?.hefsekTahara &&
+    (phase === 'waiting_mikveh' || phase === 'counting_7') &&
+    (!isFuture || dayType === 'mikveh_planned')
   // Can mark a concern day as "passed clean" only if: it's a past concern day, no sighting recorded on it
   const canMarkClean = isPast && thisDayConcerns.length > 0 && daySightings.length === 0
 
@@ -359,31 +399,31 @@ function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns 
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/25 z-40" onClick={onClose} />
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[80vh] overflow-y-auto">
+      <div className="fixed inset-0 z-40 bg-stone-950/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div dir="rtl" className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[90vh] max-w-xl overflow-y-auto rounded-t-[2rem] border border-stone-200/80 bg-[#fcfbf8] shadow-[0_-24px_80px_rgba(28,25,23,0.22)] sm:bottom-6 sm:rounded-[1.75rem]">
         <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-gray-200" />
+          <div className="h-1 w-10 rounded-full bg-stone-300 sm:hidden" />
         </div>
 
-        <div className="px-5 pt-2 pb-10">
+        <div className="px-5 pb-10 pt-2 sm:px-8 sm:pt-6">
           {/* Date */}
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">{DAY_LETTERS[hd.day]} {monthName}</h2>
-            <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 text-sm flex items-center justify-center">✕</button>
+          <div className="mb-6 flex items-start justify-between border-b border-stone-200 pb-5">
+            <div><p className="mb-1 text-[10px] font-semibold tracking-[0.16em] text-teal-800">פרטי היום</p><h2 className="text-3xl font-semibold tracking-tight text-stone-900">{DAY_LETTERS[hd.day]} {monthName}</h2></div>
+            <button onClick={onClose} aria-label="סגירה" className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white text-sm text-stone-500 shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:text-stone-900 hover:shadow">✕</button>
           </div>
 
           {/* Onah times — vertical split matching calendar */}
-          <div className="flex rounded-2xl overflow-hidden border border-gray-100 mb-4">
+          <div className="mb-5 flex overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-sm">
             {/* Night — right in RTL */}
-            <div className="flex-1 bg-slate-100 px-3 py-3">
-              <p className="text-slate-500 text-xs font-medium mb-1">🌙 לילה</p>
+            <div className="flex-1 bg-stone-100 px-4 py-3">
+              <p className="mb-1 text-xs font-semibold text-stone-500">לילה</p>
               <p className="text-slate-700 text-sm font-mono" dir="ltr">{fmt(zmanim.nightStart, tz)}</p>
               <p className="text-slate-400 text-xs font-mono" dir="ltr">↓ {fmt(zmanim.dayStart, tz)}</p>
             </div>
             <div className="w-px bg-gray-200" />
             {/* Day — left in RTL */}
-            <div className="flex-1 bg-amber-50 px-3 py-3">
-              <p className="text-amber-500 text-xs font-medium mb-1">☀️ יום</p>
+            <div className="flex-1 bg-[#fffaf0] px-4 py-3">
+              <p className="mb-1 text-xs font-semibold text-amber-700">יום</p>
               <p className="text-amber-700 text-sm font-mono" dir="ltr">{fmt(zmanim.dayStart, tz)}</p>
               <p className="text-amber-400 text-xs font-mono" dir="ltr">↓ {fmt(zmanim.dayEnd, tz)}</p>
             </div>
@@ -513,10 +553,11 @@ function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns 
 
           {/* Sighting sub-view — time input, onah computed from zmanim */}
           {view === 'sighting' && (
-            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-3">
+            <div className="mb-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-[0_12px_35px_rgba(41,37,36,0.06)] sm:p-6">
               {/* Source-type selector — only veset/bedika feed the veset engine */}
-              <p className="text-gray-800 font-semibold mb-1">סוג הראיה</p>
-              <div className="flex flex-wrap gap-1.5 mb-1">
+              <div className="mb-5"><p className="text-lg font-semibold text-stone-900">עדכון ראייה</p><p className="mt-1 text-xs leading-5 text-stone-500">בחרי את סוג הראייה והזיני את השעה. העונה תחושב עבורך.</p></div>
+              <p className="mb-2 text-xs font-semibold text-stone-700">סוג הראייה</p>
+              <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {Object.entries(SOURCE_LABEL).map(([val, label]) => {
                   const active  = sourceType === val
                   const daoraita = val === SOURCE_TYPE.VESET || val === SOURCE_TYPE.BEDIKA
@@ -524,10 +565,10 @@ function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns 
                     <button
                       key={val}
                       onClick={() => setSourceType(val)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                      className={`rounded-xl border px-3 py-2.5 text-xs font-medium transition-all ${
                         active
-                          ? 'bg-rose-500 text-white'
-                          : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'
+                          ? 'border-rose-600 bg-rose-50 text-rose-800 shadow-[0_0_0_2px_rgba(225,29,72,0.08)]'
+                          : 'border-stone-200 bg-white text-stone-600 hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-sm'
                       }`}
                     >
                       {label}{daoraita ? '' : ' ·'}
@@ -535,30 +576,29 @@ function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns 
                   )
                 })}
               </div>
-              <p className="text-gray-400 text-[11px] mb-3">
+              <p className="mb-6 text-[11px] text-stone-400">
                 רק ראיה ובדיקה נכנסות לחישוב הווסתות · שאר הסוגים מטמאים בלבד
               </p>
 
-              <p className="text-gray-800 font-semibold mb-1">באיזו שעה הייתה הראיה?</p>
-              <p className="text-gray-400 text-xs mb-3">העונה תחושב אוטומטית לפי זמני היום</p>
+              <label htmlFor="sighting-time" className="mb-2 block text-xs font-semibold text-stone-700">שעת הראייה</label>
 
               {/* Time input */}
               <input
+                id="sighting-time"
                 type="time"
                 value={timeInput}
                 onChange={e => setTimeInput(e.target.value)}
-                className="w-full border-2 border-gray-200 focus:border-gray-400 rounded-xl px-4 py-3.5 text-2xl text-center font-mono text-gray-900 mb-3 focus:outline-none bg-white"
+                className="mb-3 w-full rounded-xl border border-stone-200 bg-stone-50/70 px-4 py-4 text-center font-mono text-2xl text-stone-900 outline-none transition focus:border-teal-600 focus:bg-white focus:ring-4 focus:ring-teal-700/10"
                 style={{ direction: 'ltr' }}
               />
 
               {/* Live onah result */}
               {timeInput ? (
-                <div className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 mb-3 ${
+                <div className={`mb-4 flex items-center justify-center gap-2 rounded-xl border px-4 py-3 ${
                   computedOnah === 'day'
                     ? 'bg-amber-50 border border-amber-200'
                     : 'bg-slate-100 border border-slate-200'
                 }`}>
-                  <span className="text-lg">{computedOnah === 'day' ? '☀️' : '🌙'}</span>
                   <span className={`font-semibold text-sm ${computedOnah === 'day' ? 'text-amber-700' : 'text-slate-700'}`}>
                     {computedOnah === 'day' ? 'עונת היום' : 'עונת הלילה'}
                   </span>
@@ -572,14 +612,14 @@ function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns 
                 <div className="h-10 mb-3" />
               )}
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 border-t border-stone-200 pt-4">
                 <button onClick={() => { setView('main'); setTimeInput(''); setSourceType(SOURCE_TYPE.VESET) }}
-                  className="flex-1 bg-gray-100 text-gray-600 rounded-xl py-3 text-sm font-medium">
+                  className="flex-1 rounded-xl border border-stone-200 bg-white py-3 text-sm font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50">
                   ביטול
                 </button>
                 <button onClick={doRecordSighting} disabled={loading || !timeInput || !computedOnah}
-                  className="flex-1 bg-rose-500 text-white rounded-xl py-3 text-sm font-semibold disabled:opacity-40 transition">
-                  {loading ? '...' : 'שמור ✓'}
+                  className="flex-1 rounded-xl bg-rose-700 py-3 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(190,18,60,0.18)] transition hover:-translate-y-0.5 hover:bg-rose-800 hover:shadow-[0_10px_26px_rgba(190,18,60,0.24)] disabled:translate-y-0 disabled:opacity-40">
+                  {loading ? 'שומר…' : 'שמירת עדכון'}
                 </button>
               </div>
             </div>
@@ -606,7 +646,7 @@ function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetConcerns 
             <div className="space-y-2 mt-2">
               {canRecordSighting && (
                 <button onClick={() => setView('sighting')}
-                  className="w-full flex items-center justify-between bg-rose-500 hover:bg-rose-600 text-white rounded-2xl px-5 py-4 transition font-semibold">
+                  className="w-full flex items-center justify-between rounded-2xl bg-rose-700 px-5 py-4 font-semibold text-white shadow-[0_10px_25px_rgba(190,18,60,0.16)] transition hover:-translate-y-0.5 hover:bg-rose-800 hover:shadow-[0_14px_30px_rgba(190,18,60,0.22)]">
                   <span>רשום ראיה</span><span className="text-2xl leading-none">+</span>
                 </button>
               )}
@@ -664,16 +704,16 @@ function DayCell({ day, cellColors, isToday, isSelected, currentPeriod, onClick 
   return (
     <button
       onClick={onClick}
-      className={`w-full flex flex-row rounded-lg overflow-hidden focus:outline-none h-[3.75rem] ${
+      className={`relative h-16 w-full overflow-hidden rounded-xl border border-stone-100 focus:outline-none sm:h-20 ${
         isSelected
-          ? 'ring-2 ring-gray-800 shadow-md z-10 relative'
+          ? 'z-10 shadow-md ring-2 ring-teal-800'
           : isToday
-            ? 'ring-2 ring-blue-400 z-10 relative'
-            : 'hover:brightness-95 active:brightness-90'
+            ? 'z-10 shadow-sm ring-2 ring-teal-500'
+            : 'transition-all hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 active:brightness-90'
       }`}
     >
       {/* ── Night onah — RIGHT in RTL ── */}
-      <div className={`w-2/5 flex flex-col items-center justify-center gap-0.5 ${effectNight}`}>
+      <div className={`absolute inset-y-0 right-0 flex w-2/5 flex-col items-center justify-center gap-0.5 border-l border-black/5 ${effectNight}`}>
         {isToday && currentPeriod === 'night' && (
           <span className="w-1.5 h-1.5 rounded-full bg-gray-400 opacity-60 animate-pulse" />
         )}
@@ -683,8 +723,8 @@ function DayCell({ day, cellColors, isToday, isSelected, currentPeriod, onClick 
       </div>
 
       {/* ── Day onah — LEFT in RTL, carries the date number ── */}
-      <div className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${effectDay}`}>
-        <span className={`text-sm font-bold leading-none ${effectText}`}>
+      <div className={`absolute inset-y-0 left-0 flex w-3/5 flex-col items-center justify-center gap-0.5 ${effectDay}`}>
+        <span className={`text-sm font-semibold leading-none sm:text-base ${effectText}`}>
           {DAY_LETTERS[day]}
         </span>
         {isToday && currentPeriod === 'day' && (
@@ -724,7 +764,7 @@ function Toggle({ on, onChange, disabled }) {
   )
 }
 
-function SettingsSheet({ cycle, onClose, onRefresh }) {
+export function SettingsSheet({ cycle, onClose, onRefresh }) {
   const [loading, setLoading] = useState(false)
 
   async function save(patch) {
@@ -798,25 +838,10 @@ export default function Dashboard() {
   const [location,  setLocation]  = useState(null)
   const [now, setNow]             = useState(new Date())
 
-  const [cycle,        setCycle]        = useState(null)
-  const [sightings,    setSightings]    = useState([])
-  const [observations, setObservations] = useState([])
-  const [dataLoaded,   setDataLoaded]   = useState(false)
-  const [error,        setError]        = useState(null)
-
-  const refresh = useCallback(async () => {
-    try {
-      const [c, s, obs] = await Promise.all([
-        api.getCycle(),
-        api.getSightings(),
-        api.getVesetObservations(),
-      ])
-      setCycle(c); setSightings(s); setObservations(obs)
-    } catch (err) { setError(err.message) }
-    finally { setDataLoaded(true) }
-  }, [])
-
-  useEffect(() => { refresh() }, [refresh])
+  const {
+    cycle, sightings, dataLoaded, error, refresh,
+    cleanState, effectivePhase, vesetConcerns, vesetMap,
+  } = useMikvaEngine()
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -849,83 +874,16 @@ export default function Dashboard() {
     return null
   }, [location, todayCal, now])
 
-  const phase = useMemo(() => derivePhase(cycle), [cycle])
-
-  // ── מנוע 7 נקיים (evaluateCleanDays) — חלון [ראשון,שביעי] כולל איפוס על דם ──
-  const cleanState = useMemo(
-    () => evaluateCleanDays(cycle?.cleanDays ?? []),
-    [cycle],
-  )
-
-  // Phase אפקטיבי: בזמן ספירה, מנוע הבדיקות גובר על הדגל הנאיבי של השרת.
-  const effectivePhase = useMemo(() => {
-    if (phase !== 'counting_7') return phase
-    if (cleanState.status === 'blocked') return 'blocked'
-    if (cleanState.complete)             return 'waiting_mikveh'
-    return 'counting_7'
-  }, [phase, cleanState])
-
-  // מפת הפסק טהרה לכל ראייה (לחישובי שוע"ר ולעקירת המשך-ראייה V-24)
-  const hefsekMap = useMemo(() => {
-    const m = {}
-    for (const s of sightings) if (s.hefsekTahara) m[s._id] = s.hefsekTahara
-    return m
-  }, [sightings])
-
-  const mesulekesWins = useMemo(() => mesulekesWindows(cycle ?? {}), [cycle])
-
-  const isMesulekes = !!(cycle?.isPregnant || cycle?.isMeineket)
-
-  const vesetConcerns = useMemo(
-    () => computeVesetConcerns(
-      sightings,
-      observations,
-      cycle?.useShuar ?? false,
-      hefsekMap,
-      isMesulekes,
-      cycle?.day30Policy ?? 'tzemach_tzedek',
-      mesulekesWins,
-      cycle?.onaBeinonit31 ?? false,
-    ),
-    [sightings, observations, hefsekMap, mesulekesWins, isMesulekes,
-     cycle?.useShuar, cycle?.day30Policy, cycle?.onaBeinonit31],
-  )
-
-  const vesetMap = useMemo(() => {
-    const map = {}
-    for (const c of vesetConcerns) {
-      const k = `${c.hebrewDate.year}-${c.hebrewDate.month}-${c.hebrewDate.day}`
-      if (!map[k]) map[k] = []
-      map[k].push(c)
-    }
-    return map
-  }, [vesetConcerns])
-
   const cells = useMemo(() => buildGrid(dispYear, dispMonth), [dispYear, dispMonth])
 
   const isLeap    = JewishCalendar.isJewishLeapYear(dispYear)
   const monthName = (isLeap && dispMonth === 12) ? 'אדר א׳' : MONTH_NAMES[dispMonth]
   const phaseCfg  = PHASE_CFG[effectivePhase] ?? PHASE_CFG.tahorah
 
-  const phaseDetail = useMemo(() => {
-    if (!cycle) return null
-    if (effectivePhase === 'waiting_5_days' && cycle.latestSighting) {
-      const d = daysUntilHefsekAllowed(cycle.latestSighting.hebrewDate)
-      return d === 0 ? 'הפסק טהרה אפשרי היום' : `עוד ${d} ימים`
-    }
-    if (effectivePhase === 'blocked') {
-      return 'יש לעשות הפסק טהרה חדש ולהתחיל ספירה'
-    }
-    if (effectivePhase === 'counting_7' && cycle.hefsekTahara) {
-      const n = currentCleanDayNumber(cycle.hefsekTahara.hebrewDate)
-      return n ? `יום ${n} מ-7` : null
-    }
-    if (effectivePhase === 'waiting_mikveh' && cycle.hefsekTahara) {
-      const m = plannedMikvehDay(cycle.hefsekTahara.hebrewDate, cleanState.tovelDay)
-      return `מקווה: ליל ${DAY_LETTERS[m.day]} ${MONTH_NAMES[m.month]}`
-    }
-    return null
-  }, [effectivePhase, cycle, cleanState])
+  const phaseDetail = useMemo(
+    () => phaseDetailText(cycle, effectivePhase, cleanState),
+    [effectivePhase, cycle, cleanState],
+  )
 
   function goNext() { const n = nextHMonth(dispYear, dispMonth); setDispYear(n.year); setDispMonth(n.month) }
   function goPrev() { const p = prevHMonth(dispYear, dispMonth); setDispYear(p.year); setDispMonth(p.month) }
@@ -945,45 +903,47 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="min-h-screen bg-white" dir="rtl">
+    <main className="min-h-screen bg-[#f3f2ee] pb-12" dir="rtl">
 
       {/* ── Sticky header ── */}
-      <div className="bg-white border-b border-gray-100 px-4 pt-12 pb-3 sticky top-0 z-10">
+      <div className="sticky top-16 z-10 border-b border-stone-200/80 bg-[#f3f2ee]/90 px-4 py-5 backdrop-blur-xl">
+        <div className="mx-auto max-w-6xl">
         <div className="flex justify-end mb-1">
           <button onClick={() => setShowSettings(true)}
-            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition text-base"
-            aria-label="הגדרות">⚙</button>
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-500 shadow-sm transition hover:-translate-y-0.5 hover:text-stone-900 hover:shadow"
+            aria-label="הגדרות"><span aria-hidden="true">⚙</span></button>
         </div>
         <div className="flex items-center justify-between mb-3">
-          <button onClick={goPrev} className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition text-xl font-light">›</button>
+          <button onClick={goPrev} className="flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200 bg-white text-xl font-light text-stone-600 shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow">›</button>
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900 leading-none">{monthName}</h1>
-            <p className="text-gray-400 text-sm mt-0.5">{toHebrewYear(dispYear)}</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-stone-900 leading-none">{monthName}</h1>
+            <p className="mt-1 text-xs tracking-[0.12em] text-stone-400">{toHebrewYear(dispYear)}</p>
           </div>
-          <button onClick={goNext} className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 transition text-xl font-light">‹</button>
+          <button onClick={goNext} className="flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200 bg-white text-xl font-light text-stone-600 shadow-sm transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow">‹</button>
         </div>
 
         {/* Phase strip */}
         {dataLoaded && (
-          <div className={`rounded-xl border px-4 py-2 flex items-center justify-center gap-2 ${phaseCfg.bg} ${phaseCfg.border}`}>
+          <div className={`mx-auto mt-4 flex max-w-xl items-center justify-center gap-2 rounded-xl border px-4 py-2.5 shadow-sm ${phaseCfg.bg} ${phaseCfg.border}`}>
             <span className={`text-sm font-semibold ${phaseCfg.text}`}>{phaseCfg.label}</span>
             {phaseDetail && <span className={`text-sm ${phaseCfg.text} opacity-60`}>· {phaseDetail}</span>}
           </div>
         )}
+        </div>
       </div>
 
-      <div className="px-2">
+      <div className="mx-auto mt-7 max-w-6xl rounded-[1.75rem] border border-stone-200/90 bg-white p-3 shadow-[0_24px_70px_rgba(41,37,36,0.08)] sm:p-7">
         {/* ── Column headers with night/day labels ── */}
-        <div className="grid grid-cols-7 mt-3 mb-1">
+        <div className="mt-1 grid grid-cols-7 border-b border-stone-200">
           {DAY_HEADERS.map(h => (
-            <div key={h} className="text-center text-gray-400 text-xs font-medium py-1">{h}</div>
+            <div key={h} className="py-3 text-center text-xs font-semibold text-stone-400">{h}</div>
           ))}
         </div>
 
         {/* Night/Day sub-headers */}
-        <div className="grid grid-cols-7 gap-0.5 mb-1">
+        <div className="grid grid-cols-7 border-b border-stone-200">
           {DAY_HEADERS.map((_, i) => (
-            <div key={i} className="flex rounded overflow-hidden h-4">
+            <div key={i} className="flex h-5 overflow-hidden border-l border-stone-100">
               <div className="w-2/5 flex items-center justify-center bg-slate-100">
                 <span className="text-slate-400 text-[8px] leading-none">ל׳</span>
               </div>
@@ -1000,9 +960,9 @@ export default function Dashboard() {
             <div className="w-7 h-7 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="grid grid-cols-7 gap-0.5">
+          <div className="grid grid-cols-7 gap-1.5 pt-2 sm:gap-2">
             {cells.map((day, i) => {
-              if (!day) return <div key={i} className="h-[3.75rem]" />
+              if (!day) return <div key={i} className="h-16 sm:h-20" />
               const hd      = { year: dispYear, month: dispMonth, day }
               const isToday = day === todayDay && dispMonth === todayMonth && dispYear === todayYear
               const isSel   = selected && hebrewDateEquals(hd, selected)
@@ -1069,6 +1029,6 @@ export default function Dashboard() {
           onRefresh={refresh}
         />
       )}
-    </div>
+    </main>
   )
 }

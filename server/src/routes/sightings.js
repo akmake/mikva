@@ -26,18 +26,34 @@ router.post('/', async (req, res) => {
       lat, lng, notes,
     })
 
-    // מעבר מצב המחזור. אם הדם הופיע כשהאישה כבר בתוך/אחרי ספירת ה-7 נקיים
-    // (כלומר כבר פרושה) — אין חשש שכבת זרע ולכן *אין* 5 ימים מחדש: היא עושה
-    // הפסק טהרה בהזדמנות הראשונה. רק דם ממצב טהרה מתחיל המתנת 5 ימים.
-    let cycle = await Cycle.findOne()
-    if (!cycle) cycle = new Cycle()
-    const midCount = cycle.phase === 'counting_7' || cycle.phase === 'waiting_mikveh'
-    cycle.phase = midCount ? 'waiting_hefsek' : 'waiting_5_days'
-    cycle.latestSighting = sighting._id
-    cycle.hefsekTahara = undefined
-    cycle.cleanDays = []
-    cycle.mikveDate = {}
-    await cycle.save()
+    // נידה = מהדם הראשון עד הטבילה. הנידה הנוכחית = הנידה האחרונה שנוצרה.
+    //  • אין נידה / הנידה האחרונה נסגרה (טבלה) → זו ראיה חדשה → נידה חדשה.
+    //  • הנידה האחרונה עדיין 'active' (טרם טבלה) → זה *המשך* אותו דם → append.
+    const latest = await Cycle.findOne().sort({ createdAt: -1 })
+
+    let cycle
+    if (!latest || latest.status === 'completed') {
+      // נידה חדשה — מתחילה המתנת 5 ימים (דם ממצב טהרה).
+      cycle = await Cycle.create({
+        bleedings: [sighting._id],
+        phase: 'waiting_5_days',
+        status: 'active',
+      })
+    } else {
+      // המשך אותה נידה. אם היא כבר הייתה בתוך/אחרי 7 הנקיים — אין 5 ימים מחדש
+      // (כבר פרושה, אין חשש שכבת זרע), עושה הפסק בהזדמנות הראשונה. אם עדיין
+      // לפני הפסק — 5 הימים ממילא נספרים מהדם הראשון (bleedings[0]).
+      latest.bleedings.push(sighting._id)
+      const midCount = latest.phase === 'counting_7' || latest.phase === 'waiting_mikveh'
+      if (midCount) {
+        latest.phase = 'waiting_hefsek'
+        latest.hefsekTahara = undefined
+        latest.cleanDays = []
+        latest.mikveDate = {}
+      }
+      await latest.save()
+      cycle = latest
+    }
 
     res.status(201).json({ sighting, cycle })
   } catch (err) {

@@ -5,6 +5,7 @@ import {
   daysBetween,
   hebrewDateEquals,
   compareHebrewDates,
+  chronCompare,
   nextHebrewMonth,
   daysInHebrewMonth,
   hebrewDateToGregorian,
@@ -216,6 +217,7 @@ export function computeVesetConcerns(
   day30Policy  = 'tzemach_tzedek',
   mesulekesWins = [],
   onaBeinonit31 = false,
+  tevilaDates   = [],
 ) {
   if (!sightings || sightings.length === 0) return []
 
@@ -224,28 +226,47 @@ export function computeVesetConcerns(
     .filter(countsForVeset)
     .sort((a, b) => new Date(a.gregorianDatetime) - new Date(b.gregorianDatetime))
 
-  // ── מעיין פתוח (כד,נב,נח — V-50,55): ראיה בתוך 7 ימים מהקודמת היא אותה נידה
-  // (מעיין פתוח) ואינה ראיה חדשה לחישובי הווסת — מתחשבים רק בראיה הסתומה.
-  const counting = []
+  // ── קיבוץ לנידות: כל דימום שלפני טבילה שייך לאותה נידה (הכרעת המשתמש).
+  // נידה = מהדם הראשון עד הטבילה. ווסת החודש/עונה בינונית נמדדים מ*הדם הראשון*
+  // (onset); ווסת ההפלגה מ*הדם האחרון* (סוף הדימום — שוע"ר). כשיש תאריכי טבילה
+  // (tevilaDates) הגבול מדויק; בהיעדרם (טסטים) — נפילה לחלון מעיין-פתוח הישן (7).
+  const niddot = []
   for (const s of filtered) {
-    if (!counting.length ||
-        daysBetween(counting[counting.length - 1].hebrewDate, s.hebrewDate) >= 7) {
-      counting.push(s)
+    const cur      = niddot[niddot.length - 1]
+    const prevLast = cur ? cur[cur.length - 1] : null
+    let newNidda
+    if (!prevLast) newNidda = true
+    else if (tevilaDates.length) {
+      newNidda = tevilaDates.some(t =>
+        chronCompare(t, prevLast.hebrewDate) > 0 && chronCompare(s.hebrewDate, t) >= 0)
+    } else {
+      newNidda = daysBetween(prevLast.hebrewDate, s.hebrewDate) >= 7
     }
+    if (newNidda) niddot.push([s])
+    else cur.push(s)
   }
 
-  if (counting.length === 0) return []
+  if (niddot.length === 0) return []
 
-  const last = counting[counting.length - 1]
+  const onsets    = niddot.map(n => n[0])                 // דם ראשון של כל נידה (מוקד onset)
+  const lastOnset = onsets[onsets.length - 1]
+
+  // ההפסק של כל נידה חתום על *הדם האחרון*; ממפים אותו ל-onset._id כדי ששוע"ר
+  // (סוף הדימום → תחילה) ו-V-24 של החודש ימדדו מסוף הדימום האמיתי של הנידה —
+  // זה מימוש "הפלגה מהדם האחרון" בלי לשבור את נוהג (שמודד מהתחילה = ה-onset).
+  const niddaHefsek = {}
+  for (const n of niddot) {
+    for (const b of n) if (hefsekMap[b._id]) niddaHefsek[n[0]._id] = hefsekMap[b._id]
+  }
   const raw  = []
 
-  // מסולקת מדמים (V-90..V-95): אם הראייה האחרונה בחלון הסילוק — אינה קובעת (V-93).
-  const lastInWindow = inMesulekes(mesulekesWins, hebrewDateToGregorian(last.hebrewDate).getTime())
+  // מסולקת מדמים (V-90..V-95): לפי onset הראייה האחרונה.
+  const lastInWindow = inMesulekes(mesulekesWins, hebrewDateToGregorian(lastOnset.hebrewDate).getTime())
   const mesulekes    = isMesulekes || lastInWindow
 
   // ── ווסת החודש (כד,לד–מד) — מנוע carry-forward (V-20..V-28) ────────────────
   const chodeshKavuaKeys = new Set()
-  for (const c of computeChodeshConcerns(counting, { isMesulekes: mesulekes, day30Policy, hefsekMap })) {
+  for (const c of computeChodeshConcerns(onsets, { isMesulekes: mesulekes, day30Policy, hefsekMap })) {
     if (c.isKavua) chodeshKavuaKeys.add(`${c.canonicalDay}|${c.onah}`)
     for (const cd of expandAdar(c.hebrewDate)) {
       const adarSuffix =
@@ -271,7 +292,7 @@ export function computeVesetConcerns(
   const primaryMethod   = useShuar ? 'shuar' : 'nohag'
   const secondaryMethod = useShuar ? 'nohag' : 'shuar'
 
-  for (const c of computeHaflagahConcerns(counting, primaryMethod, hefsekMap, mesulekes)) {
+  for (const c of computeHaflagahConcerns(onsets, primaryMethod, niddaHefsek, mesulekes)) {
     const methodTag = c.method === 'shuar' ? ' (שוע"ר)' : ''
     raw.push({
       id:          `haflagah_${c.method}_${c.interval}`,
@@ -290,12 +311,12 @@ export function computeVesetConcerns(
 
   // השיטה המשנית (נוהג) — מוצגת רק לנוהגים כשוע"ר, ורק להפלגה האחרונה
   // (לחומרא), בלי carry-forward מלא. נוהג-רגיל אינו חושש ליום השוע"ר.
-  if (useShuar && counting.length >= 2) {
+  if (useShuar && onsets.length >= 2) {
     const secInterval = haflagaInterval(
-      counting[counting.length - 2], last, secondaryMethod, hefsekMap,
+      onsets[onsets.length - 2], lastOnset, secondaryMethod, niddaHefsek,
     )
     const primInterval = haflagaInterval(
-      counting[counting.length - 2], last, primaryMethod, hefsekMap,
+      onsets[onsets.length - 2], lastOnset, primaryMethod, niddaHefsek,
     )
     if (secInterval > 0 && secInterval !== primInterval) {
       const methodTag = secondaryMethod === 'shuar' ? ' (שוע"ר)' : ' (נוהג)'
@@ -303,23 +324,24 @@ export function computeVesetConcerns(
         id:          `haflagah_${secondaryMethod}_${secInterval}`,
         type:        'haflagah',
         label:       `ווסת ההפלגה — ${secInterval} יום${methodTag}`,
-        hebrewDate:   addHebrewDays(last.hebrewDate, secInterval),
-        onah:         last.onah,
+        hebrewDate:   addHebrewDays(lastOnset.hebrewDate, secInterval),
+        onah:         lastOnset.onah,
         isKavua:      false,
         kavuaCount:   1,
         interval:     secInterval,
         isSecondary:  true,
         canUproot:    true,
-        relatedSightingId: last._id,
+        relatedSightingId: lastOnset._id,
       })
     }
   }
 
   // ── ווסת סירוג (כד,עג–פב) — קבוע-חודש מסונן ע"י chodeshKavuaKeys ────────────
-  raw.push(...detectSirugConcerns(counting, chodeshKavuaKeys, mesulekes))
+  raw.push(...detectSirugConcerns(onsets, chodeshKavuaKeys, mesulekes))
 
   // ── ווסת דילוג (כד,פג–צה) ─────────────────────────────────────────────────
-  raw.push(...computeDilugConcerns(counting, primaryMethod, hefsekMap, mesulekes))
+  // דילוג ימי-חודש מבוסס onset; דילוג-הפלגה עדין יותר בנידה עם המשך — קירוב סביר.
+  raw.push(...computeDilugConcerns(onsets, primaryMethod, hefsekMap, mesulekes))
 
   // ── העשרה בעקירה ───────────────────────────────────────────────────────────
   let enriched = raw.map(c => withUprootingStatus(c, observations))
@@ -335,32 +357,34 @@ export function computeVesetConcerns(
   // ── עונה בינונית (כד,כה–ל) ────────────────────────────────────────────────
   // V-11: אינה נוצרת כל עוד יש ווסת קבוע *פעיל* (שטרם נעקר).
   // V-15: חוזרת מיד כשהקבוע נעקר בפועל.
+  // יום השלושים = ראייה + 29: "ל' יום אלו הם מתחילת ראיה לתחלת ראיה, וב' ימי
+  // הראיות בכלל הל'" (כד) — יום הראייה נספר כיום 1 (כמו ספירת 5 הימים).
   const anyActiveKavua = enriched.some(c => c.isKavua && !c.uprooted)
   if (!anyActiveKavua) {
     enriched.push(withUprootingStatus({
       id:         'ona_beinonit',
       type:       'ona_beinonit',
       label:      'עונה בינונית',
-      hebrewDate:  addHebrewDays(last.hebrewDate, 30),
+      hebrewDate:  addHebrewDays(lastOnset.hebrewDate, 29),
       onah:       'full_day',
       isKavua:    false,
       kavuaCount: 0,
       canUproot:  false,
-      relatedSightingId: last._id,
+      relatedSightingId: lastOnset._id,
     }, observations))
 
-    // V-12: חומרת יום ל"א (הגדרה). פרישה ביום ל"א בעונת הראייה בלבד (כד,כט).
+    // V-12: חומרת יום ל"א (הגדרה) = ראייה + 30. פרישה בעונת הראייה בלבד (כד,כט).
     if (onaBeinonit31) {
       enriched.push(withUprootingStatus({
         id:         'ona_beinonit_31',
         type:       'ona_beinonit',
         label:      'עונה בינונית (יום ל"א)',
-        hebrewDate:  addHebrewDays(last.hebrewDate, 31),
-        onah:        last.onah,
+        hebrewDate:  addHebrewDays(lastOnset.hebrewDate, 30),
+        onah:        lastOnset.onah,
         isKavua:    false,
         kavuaCount: 0,
         canUproot:  false,
-        relatedSightingId: last._id,
+        relatedSightingId: lastOnset._id,
       }, observations))
     }
   }

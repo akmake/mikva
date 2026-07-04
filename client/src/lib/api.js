@@ -20,6 +20,9 @@ export const api = {
   // ── cycle ──────────────────────────────────────────────────────────────
   getCycle: () => request('/cycle'),
 
+  // כל הנידות (עם bleedings) — לקיבוץ נידות בחישוב הווסתות
+  getCycles: () => request('/cycle/history'),
+
   recordHefsek: (payload) =>
     request('/cycle/hefsek-tahara', { method: 'POST', body: JSON.stringify(payload) }),
 

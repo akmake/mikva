@@ -16,14 +16,19 @@ const cleanDaySchema = new mongoose.Schema(
   { _id: false },
 )
 
+// מסמך אחד לכל נידה (אוסף היסטורי — לא סינגלטון). נידה = מהדם הראשון עד הטבילה.
+// כל הדימומים באותה נידה (דם ראשון + המשכים שלפני טבילה) נצברים ב-bleedings:
+//   bleedings[0]        = הדם הראשון (מוקד ה-onset לווסת החודש/עונה בינונית)
+//   bleedings[last]     = הדם האחרון (מוקד ההפלגה — שוע"ר מסוף הדימום)
+// status='completed' נקבע רק אחרי טבילה; ראיה חדשה בזמן 'active' = המשך (append).
 const cycleSchema = new mongoose.Schema(
   {
+    bleedings: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Sighting' }],
     phase: {
       type: String,
       enum: ['tahorah', 'waiting_5_days', 'waiting_hefsek', 'counting_7', 'waiting_mikveh'],
-      default: 'tahorah',
+      default: 'waiting_5_days',
     },
-    latestSighting: { type: mongoose.Schema.Types.ObjectId, ref: 'Sighting' },
     hefsekTahara: {
       gregorianDatetime: Date,
       hebrewDate: hebrewDateSchema,
@@ -33,15 +38,7 @@ const cycleSchema = new mongoose.Schema(
       planned: hebrewDateSchema,
       actual:  Date,
     },
-    isPregnant:      { type: Boolean, default: false },
-    pregnancyStart:  Date,
-    isMeineket:      { type: Boolean, default: false },
-    meinaketStart:   Date,
-
-    // ── הגדרות מנוע הווסתות (פרק כד) ──────────────────────────────────────
-    useShuar:      { type: Boolean, default: false }, // שיטת שוע"ר להפלגה (סוף→תחילה)
-    onaBeinonit31: { type: Boolean, default: false }, // חומרת יום ל"א (כד,כט)
-    day30Policy:   { type: String, enum: ['tzemach_tzedek', 'rosh_chodesh'], default: 'tzemach_tzedek' },
+    status: { type: String, enum: ['active', 'completed'], default: 'active' },
   },
   { timestamps: true },
 )

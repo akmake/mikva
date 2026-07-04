@@ -80,6 +80,13 @@ export function computeHaflagahConcerns(counting, method, hefsekMap = {}, isMesu
     counting[counting.length - 2], last, method, hefsekMap,
   )
 
+  // עוגן הניבוי חייב להתאים לעוגן המדידה: בשוע"ר ה-interval נמדד מ*ההפסק* של
+  // הראייה, ולכן גם יום החשש הבא נספר מ*ההפסק האחרון* + interval (לא מתחילת
+  // הראייה). בנוהג — מתחילת הראייה. חוסר התאמה כזה הקדים את החשש ב"ימי המתנה+הפסק".
+  const anchor = method === 'shuar'
+    ? (hefsekMap[last._id] ?? addHebrewDays(last.hebrewDate, 7))
+    : last.hebrewDate
+
   const out = []
   for (const [interval, info] of active) {
     out.push({
@@ -87,7 +94,7 @@ export function computeHaflagahConcerns(counting, method, hefsekMap = {}, isMesu
       interval,
       method,
       onah:        info.onah ?? last.onah,
-      hebrewDate:  addHebrewDays(last.hebrewDate, interval),
+      hebrewDate:  addHebrewDays(anchor, interval),
       isKavua:     !isMesulekes && isKavuaInterval(interval, info),
       kavuaCount:  info.seenCount,
       isPrimary:   interval === primaryInterval,

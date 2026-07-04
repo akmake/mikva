@@ -8,6 +8,14 @@ import {
   DateTime,
 } from 'kosher-zmanim'
 import tzlookup from 'tz-lookup'
+import { useMikvaEngine } from '../lib/useMikvaEngine'
+import {
+  getCellColors,
+  DaySheet,
+  SettingsSheet,
+  PHASE_CFG,
+  phaseDetailText,
+} from './Dashboard'
 
 // ── Hebrew helpers ────────────────────────────────────────────────────────────
 
@@ -108,7 +116,12 @@ function DetailPanel({ sel, location, now }) {
   }, [location, sel])
 
   if (!location)
-    return <p className="text-center text-slate-400 text-sm py-4 animate-pulse">מאתר מיקום…</p>
+    return (
+      <div className="flex min-h-44 items-center justify-center gap-3 text-stone-400 text-sm">
+        <span className="w-4 h-4 rounded-full border-2 border-stone-200 border-t-stone-700 animate-spin" />
+        מחשב את זמני היום
+      </div>
+    )
   if (!data) return null
 
   const {nightStart,dayStart,dayEnd,tz} = data
@@ -117,50 +130,67 @@ function DetailPanel({ sel, location, now }) {
   const mn = MONTH_NAMES[sel.month]
 
   return (
-    <div className="mt-4 border-t border-slate-700/50 pt-4">
-      <p className="text-center text-slate-300 text-sm mb-3 font-medium">
-        {DAY_LETTERS[sel.day]} {mn} {toHebrewYear(sel.year)}
-      </p>
-
-      <div className="grid grid-cols-2 gap-2">
-        {/* Night */}
-        <div className={`rounded-xl p-3 flex flex-col gap-1.5 transition-all ${
-          inNight ? 'bg-indigo-900 ring-1 ring-indigo-400' : 'bg-slate-800/60'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-indigo-300">🌙 לילה</span>
-            {inNight && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />}
-          </div>
-          <div className="text-xs text-slate-300 font-mono tabular-nums" dir="ltr">
-            {fmt(nightStart,tz)} – {fmt(dayStart,tz)}
-          </div>
-          {inNight && (
-            <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-400 rounded-full" style={{width:`${pct(now,nightStart,dayStart)}%`}} />
-            </div>
-          )}
-        </div>
-
-        {/* Day */}
-        <div className={`rounded-xl p-3 flex flex-col gap-1.5 transition-all ${
-          inDay ? 'bg-amber-900/60 ring-1 ring-amber-400' : 'bg-slate-800/60'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-300">☀️ יום</span>
-            {inDay && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
-          </div>
-          <div className="text-xs text-slate-300 font-mono tabular-nums" dir="ltr">
-            {fmt(dayStart,tz)} – {fmt(dayEnd,tz)}
-          </div>
-          {inDay && (
-            <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
-              <div className="h-full bg-amber-400 rounded-full" style={{width:`${pct(now,dayStart,dayEnd)}%`}} />
-            </div>
-          )}
-        </div>
+    <div>
+      <div className="mb-7">
+        <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-stone-400">היום שנבחר</p>
+        <h3 className="text-2xl font-semibold tracking-tight text-stone-900">
+          {DAY_LETTERS[sel.day]} {mn}
+        </h3>
+        <p className="mt-1 text-sm text-stone-500">{toHebrewYear(sel.year)}</p>
       </div>
+
+      <div className="space-y-3">
+        <TimeCard
+          label="לילה" tone="night" active={inNight}
+          from={fmt(nightStart,tz)} to={fmt(dayStart,tz)}
+          progress={inNight ? pct(now,nightStart,dayStart) : null}
+        />
+        <TimeCard
+          label="יום" tone="day" active={inDay}
+          from={fmt(dayStart,tz)} to={fmt(dayEnd,tz)}
+          progress={inDay ? pct(now,dayStart,dayEnd) : null}
+        />
+      </div>
+      <p className="mt-5 text-xs leading-5 text-stone-400">הזמנים מחושבים לפי המיקום הנוכחי שלך.</p>
     </div>
   )
+}
+
+function TimeCard({ label, tone, active, from, to, progress }) {
+  const isNight = tone === 'night'
+  return (
+    <div className={`relative border p-4 transition-colors ${
+      active ? 'border-teal-700 bg-teal-50/50' : 'border-stone-200 bg-white'
+    }`}>
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className={`flex h-7 w-7 items-center justify-center rounded-full ${active ? 'bg-teal-800 text-white' : 'bg-stone-100 text-stone-500'}`}>
+            {isNight ? <MoonIcon /> : <SunIcon />}
+          </span>
+          <span className={`text-sm font-semibold ${active ? 'text-teal-950' : 'text-stone-700'}`}>{label}</span>
+        </div>
+        {active && <span className="text-[10px] font-semibold tracking-wide text-teal-800">עכשיו</span>}
+      </div>
+      <div className="flex items-end justify-between" dir="rtl">
+        <div><span className="block text-[10px] text-stone-400">מתחיל</span><span className="font-mono text-sm tabular-nums text-stone-800" dir="ltr">{from}</span></div>
+        <span className="mb-1 h-px flex-1 bg-stone-200 mx-3" />
+        <div className="text-left"><span className="block text-[10px] text-stone-400">מסתיים</span><span className="font-mono text-sm tabular-nums text-stone-800" dir="ltr">{to}</span></div>
+      </div>
+      {progress != null && (
+        <div className="mt-4 h-0.5 bg-teal-100 overflow-hidden">
+          <div className="h-full bg-teal-700 transition-all duration-700" style={{width:`${progress}%`}} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MoonIcon() {
+  return <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z" /></svg>
+}
+
+function SunIcon() {
+  return <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -174,8 +204,26 @@ export default function HebrewCalendarPage() {
   const [dispYear,  setDispYear]  = useState(todayYear)
   const [dispMonth, setDispMonth] = useState(todayMonth)
   const [sel, setSel] = useState({year:todayYear, month:todayMonth, day:todayDay})
+  const [sheetHd, setSheetHd]     = useState(null)   // day whose action-sheet is open
+  const [showSettings, setShowSettings] = useState(false)
   const [location, setLocation]   = useState(null)
   const [now, setNow]             = useState(new Date())
+
+  // ── Shared halachic engine (identical to the "/" dashboard) ──
+  const {
+    cycle, sightings, dataLoaded, error, refresh,
+    cleanState, effectivePhase, vesetConcerns, vesetMap,
+  } = useMikvaEngine()
+
+  const phaseCfg    = PHASE_CFG[effectivePhase] ?? PHASE_CFG.tahorah
+  const phaseDetail = useMemo(
+    () => phaseDetailText(cycle, effectivePhase, cleanState),
+    [cycle, effectivePhase, cleanState],
+  )
+
+  const sheetColors = sheetHd
+    ? getCellColors(sheetHd, sightings, cycle, vesetMap, cleanState)
+    : null
 
   // current period for today (to colour the cells)
   const todayPeriods = useMemo(() => {
@@ -224,112 +272,192 @@ export default function HebrewCalendarPage() {
   const isTodayNight = d => isToday(d) && currentPeriod==='night'
   const isTodayDay   = d => isToday(d) && currentPeriod==='day'
 
+  const todayLabel = `${DAY_LETTERS[todayDay]} ${MONTH_NAMES[todayMonth]} ${toHebrewYear(todayYear)}`
+  const isCurrentMonth = dispMonth===todayMonth && dispYear===todayYear
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex flex-col items-center px-3 py-8" dir="rtl">
-      <div className="w-full max-w-sm">
+    <main className="min-h-screen bg-[#f6f5f1] text-stone-900" dir="rtl">
+      <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 sm:py-12">
+        <header className="mb-8 flex items-end justify-between border-b border-stone-300 pb-6">
+          <div>
+            <p className="mb-2 text-xs font-semibold tracking-[0.18em] text-teal-800">לוח עברי</p>
+            <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">{todayLabel}</h1>
+            <p className="mt-2 text-sm text-stone-500">התאריך העברי, זמני היום ומעקב הטהרה — במקום אחד.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSettings(true)}
+              aria-label="הגדרות הלכתיות"
+              className="flex h-10 w-10 items-center justify-center border border-stone-300 bg-white text-lg text-stone-500 transition hover:border-stone-500 hover:text-stone-900"
+            >⚙</button>
+            <Link to="/" aria-label="חזרה לדף הבית" className="hidden h-10 items-center gap-2 border border-stone-300 bg-white px-4 text-sm text-stone-600 transition hover:border-stone-500 hover:text-stone-900 sm:flex">
+              דף הבית <span aria-hidden="true">←</span>
+            </Link>
+          </div>
+        </header>
 
-        <Link to="/" className="text-slate-400 hover:text-slate-200 text-sm mb-5 inline-flex items-center gap-1 transition">
-          <span>→</span> דף הבית
-        </Link>
+        {/* Phase strip — current halachic status */}
+        {dataLoaded && (
+          <div className={`mb-6 flex items-center justify-center gap-2 border px-4 py-2.5 ${phaseCfg.bg} ${phaseCfg.border}`}>
+            <span className={`text-sm font-semibold ${phaseCfg.text}`}>{phaseCfg.label}</span>
+            {phaseDetail && <span className={`text-sm opacity-60 ${phaseCfg.text}`}>· {phaseDetail}</span>}
+          </div>
+        )}
 
-        <div className="bg-slate-900/90 border border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden">
-
-          {/* ── Header ── */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
+        <div className="grid overflow-hidden border border-stone-300 bg-white shadow-[0_18px_60px_rgba(41,37,36,0.07)] lg:grid-cols-[minmax(0,1fr)_320px]">
+          <section className="p-4 sm:p-7 lg:p-9">
+          <div className="flex items-center justify-between border-b border-stone-200 pb-5">
             <button
               onClick={() => { const p=prevMonth(dispYear,dispMonth); setDispYear(p.year); setDispMonth(p.month) }}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-700 text-slate-300 hover:text-white transition text-lg"
+              aria-label="החודש הקודם"
+              className="flex h-10 w-10 items-center justify-center border border-stone-200 text-xl text-stone-500 transition hover:border-stone-500 hover:text-stone-900 active:scale-95"
             >›</button>
 
             <div className="text-center">
-              <h2 className="text-white text-xl font-bold tracking-wide">{monthName}</h2>
-              <p className="text-slate-400 text-xs mt-0.5">{toHebrewYear(dispYear)}</p>
+              <h2 className="text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">{monthName}</h2>
+              <p className="mt-1 text-xs tracking-[0.12em] text-stone-400">{toHebrewYear(dispYear)}</p>
             </div>
 
             <button
               onClick={() => { const n=nextMonth(dispYear,dispMonth); setDispYear(n.year); setDispMonth(n.month) }}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-700 text-slate-300 hover:text-white transition text-lg"
+              aria-label="החודש הבא"
+              className="flex h-10 w-10 items-center justify-center border border-stone-200 text-xl text-stone-500 transition hover:border-stone-500 hover:text-stone-900 active:scale-95"
             >‹</button>
           </div>
 
-          {/* ── Day-of-week headers ── */}
-          <div className="grid grid-cols-7 border-b border-slate-700/50">
-            {DAY_HEADERS.map(h => (
-              <div key={h} className="text-center text-slate-500 text-xs font-medium py-2">{h}</div>
+          <div className="flex h-11 items-center justify-center">
+            {!isCurrentMonth && <button onClick={() => { setDispYear(todayYear); setDispMonth(todayMonth) }} className="text-xs font-semibold text-teal-800 underline decoration-teal-300 underline-offset-4 hover:text-teal-950">חזרה לחודש הנוכחי</button>}
+          </div>
+
+          <div className="grid grid-cols-7 border-b border-stone-200">
+            {DAY_HEADERS.map((h, idx) => (
+              <div key={h} className={`py-3 text-center text-[11px] font-semibold ${idx===6 ? 'text-teal-700' : 'text-stone-400'}`}>{h}</div>
             ))}
           </div>
 
-          {/* ── Calendar grid ── */}
-          <div className="grid grid-cols-7 gap-1 p-2">
+          <div className="grid grid-cols-7">
             {cells.map((day, i) => {
-              if (!day) return <div key={i} />
+              if (!day) return <div key={i} className="aspect-square border-b border-l border-stone-100" />
 
+              const hd       = { year: dispYear, month: dispMonth, day }
               const today    = isToday(day)
               const selected = isSelected(day)
               const activeNight = isTodayNight(day)
               const activeDay   = isTodayDay(day)
+              const isShabbat = (i % 7) === 6
+
+              // Halachic status colours (night = right 2/5, day = left) — same
+              // engine the "/" dashboard uses.
+              const colors = dataLoaded
+                ? getCellColors(hd, sightings, cycle, vesetMap, cleanState)
+                : null
+              const nightColor    = colors?.nightColor ?? 'bg-transparent'
+              const dayColor      = colors?.dayColor   ?? 'bg-transparent'
+              const hasConcern    = (colors?.nightConcerns?.length ?? 0) > 0
+                                 || (colors?.dayConcerns?.length   ?? 0) > 0
 
               return (
                 <button
                   key={i}
-                  onClick={() => setSel({year:dispYear, month:dispMonth, day})}
-                  className={`rounded-lg overflow-hidden transition-all focus:outline-none ${
-                    selected ? 'ring-2 ring-white shadow-lg shadow-white/10' :
-                    today    ? 'ring-1 ring-blue-400' : 'hover:ring-1 hover:ring-slate-500'
+                  onClick={() => { setSel(hd); setSheetHd(hd) }}
+                  aria-label={`${DAY_LETTERS[day]} ${monthName}`}
+                  className={`group relative aspect-square overflow-hidden border-b border-l border-stone-100 flex items-center justify-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-700 ${
+                    selected ? 'ring-2 ring-inset ring-teal-800 z-10'
+                    : today   ? 'ring-2 ring-inset ring-teal-400 z-10'
+                              : 'hover:brightness-95'
                   }`}
                 >
-                  {/* Night half */}
-                  <div className={`h-4 flex items-center justify-center transition-colors ${
-                    activeNight ? 'bg-indigo-600'
-                    : today     ? 'bg-indigo-950'
-                                : 'bg-slate-800'
-                  }`}>
-                    {activeNight && <span className="w-1 h-1 rounded-full bg-indigo-300 animate-pulse" />}
-                  </div>
+                  {/* status background — night | day split */}
+                  <span className="absolute inset-0 flex">
+                    <span className={`w-2/5 ${nightColor}`} />
+                    <span className={`flex-1 ${dayColor}`} />
+                  </span>
 
-                  {/* Day half */}
-                  <div className={`h-7 flex items-center justify-center transition-colors ${
-                    activeDay ? 'bg-amber-700/70'
-                    : today   ? 'bg-blue-800'
-                              : 'bg-slate-700/60'
-                  }`}>
-                    <span className={`text-sm font-bold leading-none ${
-                      today || selected ? 'text-white' : 'text-slate-200'
-                    }`}>
-                      {DAY_LETTERS[day]}
-                    </span>
-                  </div>
+                  <span className={`relative text-sm leading-none sm:text-base ${
+                    colors?.dayText ?? (isShabbat ? 'text-teal-700' : 'text-stone-700')
+                  } ${selected || today ? 'font-semibold' : 'font-normal'}`}>
+                    {DAY_LETTERS[day]}
+                  </span>
+
+                  {hasConcern && (
+                    <span className="absolute bottom-1.5 left-1.5 h-1.5 w-1.5 rounded-full bg-orange-400" />
+                  )}
+                  {(activeNight || activeDay) && (
+                    <span className="absolute bottom-1.5 right-1.5 h-1 w-1 rounded-full bg-gray-500 opacity-60 animate-pulse" />
+                  )}
+                  {today && <span className="absolute right-1.5 top-1.5 text-[8px] font-semibold text-teal-700">היום</span>}
                 </button>
               )
             })}
           </div>
+          </section>
 
-          {/* ── Detail panel ── */}
-          <div className="px-4 pb-4">
+          <aside className="border-t border-stone-300 bg-[#fbfaf7] p-6 sm:p-8 lg:border-r lg:border-t-0">
             <DetailPanel sel={sel} location={location} now={now} />
-          </div>
+
+            {/* Status legend */}
+            <div className="mt-8 border-t border-stone-200 pt-5">
+              <p className="mb-3 text-xs font-semibold tracking-[0.14em] text-stone-400">מקרא</p>
+              <div className="flex flex-col gap-2.5">
+                {[
+                  { label: 'ראיה',      night: 'bg-rose-500',    day: 'bg-rose-50'     },
+                  { label: 'הפסק טהרה', night: 'bg-amber-400',   day: 'bg-amber-300'   },
+                  { label: '7 נקיים',   night: 'bg-emerald-200', day: 'bg-emerald-100' },
+                  { label: 'מקווה',     night: 'bg-blue-200',    day: 'bg-blue-100'    },
+                ].map(({ label, night, day }) => (
+                  <div key={label} className="flex items-center gap-2.5">
+                    <span className="flex h-4 w-6 overflow-hidden border border-stone-200">
+                      <span className={`w-2/5 ${night}`} />
+                      <span className={`flex-1 ${day}`} />
+                    </span>
+                    <span className="text-xs text-stone-500">{label}</span>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2.5">
+                  <span className="ml-1 inline-block h-2 w-2 rounded-full bg-orange-400" />
+                  <span className="text-xs text-stone-500">חשש ווסת</span>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
 
-        {/* Legend */}
-        <div className="flex items-center justify-center gap-5 mt-4 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-slate-800 inline-block border border-slate-600" />
-            לילה
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-slate-700/60 inline-block border border-slate-600" />
-            יום
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-indigo-600 inline-block" />
-            עכשיו (לילה)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-amber-700/70 inline-block" />
-            עכשיו (יום)
-          </span>
-        </div>
+        <footer className="mt-5 flex items-center justify-between text-xs text-stone-400">
+          <Link to="/" className="sm:hidden hover:text-stone-700">← דף הבית</Link>
+          <p className="mr-auto">לחצו על תאריך כדי לרשום ראיה, הפסק טהרה, בדיקה או טבילה — ולראות את זמני היום</p>
+        </footer>
       </div>
-    </div>
+
+      {error && (
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 shadow-lg">
+          שגיאת חיבור לשרת: {error}
+        </div>
+      )}
+
+      {/* Action sheet — full halachic actions for the selected day */}
+      {sheetHd && (
+        <DaySheet
+          hd={sheetHd}
+          cellColors={sheetColors}
+          cycle={cycle}
+          cleanState={cleanState}
+          sightings={sightings}
+          vesetConcerns={vesetConcerns}
+          location={location}
+          phase={effectivePhase}
+          onClose={() => setSheetHd(null)}
+          onRefresh={refresh}
+        />
+      )}
+
+      {/* Settings sheet */}
+      {showSettings && (
+        <SettingsSheet
+          cycle={cycle}
+          onClose={() => setShowSettings(false)}
+          onRefresh={refresh}
+        />
+      )}
+    </main>
   )
 }
