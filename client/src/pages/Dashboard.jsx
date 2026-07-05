@@ -12,6 +12,7 @@ import {
 } from '../lib/hebrewCalendar'
 import {
   plannedMikvehDay,
+  hefsekTaharaDay,
   hefsekWindow,
   bedikaWindows,
   daysUntilHefsekAllowed,
@@ -149,10 +150,15 @@ export function getCellColors(hd, sightings, cycles, vesetMap) {
   const cleanState = evaluateCleanDays(cycle?.cleanDays ?? [])
   const k = `${hd.year}-${hd.month}-${hd.day}`
   const allConcerns = vesetMap[k] ?? []
-  // Only show dots for ACTIVE (non-uprooted) concerns
-  const activeConcerns = allConcerns.filter(c => !c.uprooted)
-  const nightConcerns  = activeConcerns.filter(c => c.onah === 'night' || c.onah === 'full_day')
-  const dayConcerns    = activeConcerns.filter(c => c.onah === 'day'   || c.onah === 'full_day')
+  const shownConcerns = allConcerns.filter(c => !c.uprooted)
+  // חשש פעיל (עתידי/נוכחי) → כתום; חשש שעבר (היסטורי, מצטבר) → אפור.
+  const activeConcerns = shownConcerns.filter(c => !c.passed)
+  const passedConcerns = shownConcerns.filter(c => c.passed)
+  const byOnah = (arr, o) => arr.filter(c => c.onah === o || c.onah === 'full_day')
+  const nightConcerns = byOnah(activeConcerns, 'night')
+  const dayConcerns   = byOnah(activeConcerns, 'day')
+  const nightPassed   = byOnah(passedConcerns, 'night')
+  const dayPassed     = byOnah(passedConcerns, 'day')
 
   let nightColor = 'bg-slate-100'
   let dayColor   = 'bg-white'
@@ -246,15 +252,25 @@ export function getCellColors(hd, sightings, cycles, vesetMap) {
   // ── חשש ווסת (עתידי/רגיל): צובע את חצי-העונה שבו נופל החשש ברקע כתום רך ──
   if (nightConcerns.length > 0 || dayConcerns.length > 0) {
     return {
-      nightColor: nightConcerns.length ? 'bg-orange-200' : 'bg-slate-100',
-      dayColor:   dayConcerns.length   ? 'bg-orange-100' : 'bg-white',
+      nightColor: nightConcerns.length ? 'bg-orange-200' : (nightPassed.length ? 'bg-gray-200' : 'bg-slate-100'),
+      dayColor:   dayConcerns.length   ? 'bg-orange-100' : (dayPassed.length   ? 'bg-gray-100' : 'bg-white'),
       dayText:    dayConcerns.length   ? 'text-orange-900' : 'text-gray-800',
-      nightConcerns, dayConcerns, type: 'concern', dayNum: null,
+      nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'concern', dayNum: null,
+    }
+  }
+
+  // ── חשש שעבר (היסטורי, מצטבר): רקע אפור רך + נקודה אפורה ──
+  if (nightPassed.length > 0 || dayPassed.length > 0) {
+    return {
+      nightColor: nightPassed.length ? 'bg-gray-200' : 'bg-slate-100',
+      dayColor:   dayPassed.length   ? 'bg-gray-100' : 'bg-white',
+      dayText: 'text-gray-500',
+      nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'concern_passed', dayNum: null,
     }
   }
 
   return { nightColor: 'bg-slate-100', dayColor: 'bg-white', dayText: 'text-gray-800',
-           nightConcerns, dayConcerns, type: 'normal', dayNum: null }
+           nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'normal', dayNum: null }
 }
 
 // ── Phase banner config ─────────────────────────────────────────────────────
@@ -344,14 +360,22 @@ export function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetCo
 
   const isBlocked         = phase === 'blocked'
   const canRecordSighting = !daySightings.length && !isFuture
-  // הפסק טהרה: רגיל (סוף 5 ימים) או הפסק *חדש* לאחר שנמצא דם בספירה (blocked)
-  const canDoHefsek       = ((phase === 'waiting_hefsek' && !cycle?.hefsekTahara) || isBlocked) && !isFuture
+  // הפסק טהרה מותר רק מיום ה-5 של הנידה (onset+4) והלאה — לא על הימים הראשונים.
+  // ה-onset של הנידה שמכסה את היום שנבחר; היום שנבחר חייב להיות ≥ יום ההפסק המוקדם.
+  const onsetHD           = cycle?.latestSighting?.hebrewDate ?? cycle?.bleedings?.[0]?.hebrewDate ?? null
+  const hefsekDayReached  = onsetHD ? daysBetween(hefsekTaharaDay(onsetHD), hd) >= 0 : false
+  // רגיל: אחרי 5 ימים (וביום ≥ 5). blocked (נמצא דם בספירה): הפסק חדש *מיד*, ללא 5 ימים (אפיון).
+  const canDoHefsek       = !isFuture && (
+    (phase === 'waiting_hefsek' && !cycle?.hefsekTahara && hefsekDayReached) || isBlocked
+  )
   const canRecordBedika   = phase === 'counting_7' && (dayType === 'clean' || dayType === 'clean_7') && !isFuture
-  // טבילה — זמינה כשיש הפסק טהרה ובמהלך/סיום ספירת ה-7 (כולל למפרע). זמין גם על
-  // תא ליל הטבילה עצמו (שהוא "עתידי" ביום אחד לפי התאריך העברי, אך הטבילה בלילה שלו).
-  const canRecordMikveh   = !!cycle?.hefsekTahara &&
-    (phase === 'waiting_mikveh' || phase === 'counting_7') &&
-    (!isFuture || dayType === 'mikveh_planned')
+  // טבילה מותרת רק בליל הטבילה — *אחרי* שהושלמו 7 הנקיים, על יום הטבילה המתוכנן
+  // (ליל מוצאי היום השביעי) והלאה, וכל עוד לא נרשמה טבילה. לא במהלך הספירה.
+  const mikvehHD          = (cycle?.hefsekTahara && cleanState?.complete)
+    ? plannedMikvehDay(cycle.hefsekTahara.hebrewDate, cleanState.tovelDay)
+    : null
+  const canRecordMikveh   = !!mikvehHD && !cycle?.mikveDate?.actual &&
+    daysBetween(mikvehHD, hd) >= 0
   // Can mark a concern day as "passed clean" only if: it's a past concern day, no sighting recorded on it
   const canMarkClean = isPast && thisDayConcerns.length > 0 && daySightings.length === 0
 
@@ -529,7 +553,7 @@ export function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetCo
             </div>
           )}
           {thisDayConcerns.map(c => {
-            const isUprooted = c.uprooted
+            const isUprooted = c.uprooted || c.passed
             const kavuaLabel = c.isKavua ? ' (קבוע)' : ''
             const progressLabel = c.needed > 1
               ? `עקירה: ${c.cleanPasses}/${c.needed}`
@@ -746,6 +770,8 @@ function DayCell({ day, cellColors, isToday, isSelected, currentPeriod, onClick 
     dayText       = 'text-gray-800',
     nightConcerns = [],
     dayConcerns   = [],
+    nightPassed   = [],
+    dayPassed     = [],
     type          = 'normal',
   } = cellColors ?? {}
 
@@ -774,6 +800,9 @@ function DayCell({ day, cellColors, isToday, isSelected, currentPeriod, onClick 
         {nightConcerns.length > 0 && (
           <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
         )}
+        {nightConcerns.length === 0 && nightPassed.length > 0 && (
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+        )}
       </div>
 
       {/* ── Day onah — LEFT in RTL, carries the date number ── */}
@@ -786,6 +815,9 @@ function DayCell({ day, cellColors, isToday, isSelected, currentPeriod, onClick 
         )}
         {dayConcerns.length > 0 && (
           <span className="w-1 h-1 rounded-full bg-orange-400" />
+        )}
+        {dayConcerns.length === 0 && dayPassed.length > 0 && (
+          <span className="w-1 h-1 rounded-full bg-gray-400" />
         )}
       </div>
     </button>
@@ -1060,6 +1092,10 @@ export default function Dashboard() {
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />
             <span className="text-gray-400 text-xs">חשש ווסת</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" />
+            <span className="text-gray-400 text-xs">חשש שעבר</span>
           </div>
         </div>
       </div>

@@ -77,6 +77,8 @@ export function useMikvaEngine() {
       cycle?.day30Policy ?? 'tzemach_tzedek',
       mesulekesWins,
       cycle?.onaBeinonit31 ?? false,
+      [],    // tevilaDates
+      true,  // includeHistory — ימי חשש היסטוריים (מצטברים) לתצוגה בלוח
     ),
     [sightings, observations, hefsekMap, mesulekesWins, isMesulekes,
      cycle?.useShuar, cycle?.day30Policy, cycle?.onaBeinonit31],

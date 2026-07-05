@@ -363,6 +363,9 @@ export default function HebrewCalendarPage() {
               const dayColor      = colors?.dayColor   ?? 'bg-transparent'
               const hasConcern    = (colors?.nightConcerns?.length ?? 0) > 0
                                  || (colors?.dayConcerns?.length   ?? 0) > 0
+              const hasPassed     = !hasConcern && (
+                                    (colors?.nightPassed?.length ?? 0) > 0
+                                 || (colors?.dayPassed?.length   ?? 0) > 0)
 
               return (
                 <button
@@ -388,6 +391,9 @@ export default function HebrewCalendarPage() {
 
                   {hasConcern && (
                     <span className="absolute bottom-1.5 left-1.5 h-1.5 w-1.5 rounded-full bg-orange-400" />
+                  )}
+                  {hasPassed && (
+                    <span className="absolute bottom-1.5 left-1.5 h-1.5 w-1.5 rounded-full bg-gray-400" />
                   )}
                   {(activeNight || activeDay) && (
                     <span className="absolute bottom-1.5 right-1.5 h-1 w-1 rounded-full bg-gray-500 opacity-60 animate-pulse" />
@@ -423,6 +429,10 @@ export default function HebrewCalendarPage() {
                 <div className="flex items-center gap-2.5">
                   <span className="ml-1 inline-block h-2 w-2 rounded-full bg-orange-400" />
                   <span className="text-xs text-stone-500">חשש ווסת</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="ml-1 inline-block h-2 w-2 rounded-full bg-gray-400" />
+                  <span className="text-xs text-stone-500">חשש שעבר</span>
                 </div>
               </div>
             </div>

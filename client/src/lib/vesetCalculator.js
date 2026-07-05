@@ -9,6 +9,7 @@ import {
   nextHebrewMonth,
   daysInHebrewMonth,
   hebrewDateToGregorian,
+  todayHebrew,
 } from './hebrewCalendar.js'
 import { countsForVeset } from './veset/sourceTypes.js'
 import { computeHaflagahConcerns, haflagaInterval } from './veset/haflagahEngine.js'
@@ -218,6 +219,7 @@ export function computeVesetConcerns(
   mesulekesWins = [],
   onaBeinonit31 = false,
   tevilaDates   = [],
+  includeHistory = false,
 ) {
   if (!sightings || sightings.length === 0) return []
 
@@ -387,6 +389,66 @@ export function computeVesetConcerns(
         relatedSightingId: lastOnset._id,
       }, observations))
     }
+  }
+
+  // ── ימי חשש מצטברים (תצוגה) ──────────────────────────────────────────────
+  // עונה בינונית "אינה מתבטלת לעולם" למי שאין ווסתה קבוע, וחוזרת "משלשים
+  // לשלשים" (כד,סה; שוע"ר קפט,א — מקורות/כד.txt שו' 1091,1102). לכן פולטים את
+  // *סדרת* ימי העונה בינונית (כל 30 יום) לכל נידה, חסומה ע"י הנידה הבאה, ולנידה
+  // האחרונה עד אופק עתידי. כן פולטים חודש/הפלגה של נידות-עבר. המנוע הקדימי
+  // (enriched) נשאר כמות שהוא; passed=true (מוצג אפור) אם עבר תאריך החשש.
+  if (includeHistory) {
+  const todayHD  = todayHebrew()
+  const HORIZON  = 210 // ~7 חודשים קדימה לסדרת העונה בינונית של הנידה האחרונה
+  const seenKeys = new Set(
+    enriched.map(c => `${c.type}|${c.hebrewDate.year}-${c.hebrewDate.month}-${c.hebrewDate.day}|${c.onah}`),
+  )
+  const pushHist = (type, label, hd, onah, relId, extra = {}) => {
+    if (!hd) return
+    const key = `${type}|${hd.year}-${hd.month}-${hd.day}|${onah}`
+    if (seenKeys.has(key)) return
+    seenKeys.add(key)
+    enriched.push({
+      id: `hist_${key}`, type, label, hebrewDate: hd, onah,
+      isKavua: false, kavuaCount: 0, canUproot: false,
+      cleanPasses: 0, needed: 0, uprooted: false, observationIds: [],
+      passed: chronCompare(hd, todayHD) < 0, historical: true,
+      relatedSightingId: relId, ...extra,
+    })
+  }
+  for (let i = 0; i < onsets.length; i++) {
+    const O       = onsets[i]
+    const nextO   = onsets[i + 1] ?? null
+    // גבול עליון (בלעדי): ה-onset של הנידה הבאה, או אופק עתידי לנידה האחרונה.
+    const bound   = nextO ? nextO.hebrewDate : addHebrewDays(todayHD, HORIZON)
+
+    // עונה בינונית מצטברת — יום ל', ואם עבר בנקיות שוב יום ל' וכן הלאה (רק כשאין
+    // ווסת קבוע פעיל, V-11 — כמו המנוע הקדימי).
+    if (!anyActiveKavua) {
+      for (let k = 0; k < 24; k++) {
+        const d30 = addHebrewDays(O.hebrewDate, 29 + 30 * k)
+        if (chronCompare(d30, bound) >= 0) break
+        pushHist('ona_beinonit', 'עונה בינונית', d30, 'full_day', O._id)
+        if (onaBeinonit31)
+          pushHist('ona_beinonit', 'עונה בינונית (יום ל"א)', addHebrewDays(O.hebrewDate, 30 + 30 * k), O.onah, O._id)
+      }
+    }
+
+    // חודש/הפלגה של נידות-עבר (הנידה האחרונה מטופלת ע"י המנוע הקדימי).
+    if (i < onsets.length - 1) {
+      pushHist('chodesh', 'ווסת החודש', nextOccurrenceAfter(O.hebrewDate, O.hebrewDate.day, day30Policy), O.onah, O._id)
+      if (i >= 1) {
+        const interval = haflagaInterval(onsets[i - 1], O, primaryMethod, niddaHefsek)
+        if (interval > 0) {
+          const anchor = primaryMethod === 'shuar'
+            ? (niddaHefsek[onsets[i - 1]._id] ?? addHebrewDays(onsets[i - 1].hebrewDate, 7))
+            : onsets[i - 1].hebrewDate
+          pushHist('haflagah', `ווסת ההפלגה — ${interval} יום`,
+            addHebrewDays(anchor, interval), O.onah, onsets[i - 1]._id, { interval })
+        }
+      }
+    }
+  }
   }
 
   return enriched.sort((a, b) => compareHebrewDates(a.hebrewDate, b.hebrewDate))
