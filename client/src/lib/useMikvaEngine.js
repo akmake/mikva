@@ -13,6 +13,7 @@ import { mesulekesWindows } from './veset/mesulekes'
 
 export function useMikvaEngine() {
   const [cycle,        setCycle]        = useState(null)
+  const [cycles,       setCycles]       = useState([])
   const [sightings,    setSightings]    = useState([])
   const [observations, setObservations] = useState([])
   const [dataLoaded,   setDataLoaded]   = useState(false)
@@ -20,12 +21,19 @@ export function useMikvaEngine() {
 
   const refresh = useCallback(async () => {
     try {
-      const [c, s, obs] = await Promise.all([
+      const [c, all, s, obs] = await Promise.all([
         api.getCycle(),
+        api.getCycles(),
         api.getSightings(),
         api.getVesetObservations(),
       ])
-      setCycle(c); setSightings(s); setObservations(obs)
+      // כל נידה מנורמלת עם latestSighting = הדם הראשון (onset), כדי שהצביעה
+      // וה-derivePhase יעבדו פר-נידה (תיעוד-עבר → כל נידה מציגה תהליך משלה).
+      const normalized = (all ?? []).map(cy => ({
+        ...cy,
+        latestSighting: cy.bleedings?.[0] ?? null,
+      }))
+      setCycle(c); setCycles(normalized); setSightings(s); setObservations(obs)
     } catch (err) { setError(err.message) }
     finally { setDataLoaded(true) }
   }, [])
@@ -85,7 +93,7 @@ export function useMikvaEngine() {
   }, [vesetConcerns])
 
   return {
-    cycle, sightings, observations, dataLoaded, error, refresh,
+    cycle, cycles, sightings, observations, dataLoaded, error, refresh,
     phase, cleanState, effectivePhase, vesetConcerns, vesetMap,
   }
 }

@@ -19,6 +19,8 @@ import {
 } from '../lib/cycleCalculator'
 import { SOURCE_LABEL, SOURCE_TYPE } from '../lib/veset/sourceTypes'
 import { useMikvaEngine } from '../lib/useMikvaEngine'
+import { evaluateCleanDays } from '../lib/cleanDaysEngine'
+import { derivePhase } from '../lib/cycleCalculator'
 
 // ── Hebrew helpers ──────────────────────────────────────────────────────────
 
@@ -97,7 +99,54 @@ function fmt(date, tz) {
 // dayColor    = color for the left (day) half
 // nightConcerns / dayConcerns = veset concerns split by onah
 
-export function getCellColors(hd, sightings, cycle, vesetMap, cleanState) {
+// ה-onset (הדם הראשון) של נידה, כתאריך עברי.
+function cycleOnset(c) {
+  return c?.latestSighting?.hebrewDate ?? c?.bleedings?.[0]?.hebrewDate ?? null
+}
+
+// הנידה ש*מכסה* תאריך עברי נתון = זו עם ה-onset המאוחר ביותר שעדיין ≤ hd.
+// כך כל יום בלוח מצייר את תהליך הטהרה של הנידה הנכונה שלו (כולל נידות-עבר).
+export function cycleForDate(cycles, hd) {
+  let best = null
+  let bestOnset = null
+  for (const c of cycles ?? []) {
+    const onset = cycleOnset(c)
+    if (!onset) continue
+    if (daysBetween(onset, hd) >= 0 && (!bestOnset || daysBetween(bestOnset, onset) > 0)) {
+      best = c; bestOnset = onset
+    }
+  }
+  return best
+}
+
+// ה-onset של הנידה הבאה (המוקדם ביותר שאחרי onset הנוכחי) — תוחם את טווח הטומאה
+// של נידה שטרם תועד לה הפסק, כדי שלא תימרח אדום עד היום כשיש נידה מאוחרת יותר.
+function nextOnsetAfter(cycles, cyc) {
+  const myOnset = cycleOnset(cyc)
+  if (!myOnset) return null
+  let best = null
+  for (const c of cycles ?? []) {
+    const o = cycleOnset(c)
+    if (!o) continue
+    if (daysBetween(myOnset, o) > 0 && (!best || daysBetween(o, best) > 0)) best = o
+  }
+  return best
+}
+
+// ה-phase האפקטיבי של נידה מסוימת (זהה ללוגיקה ב-useMikvaEngine, אך פר-נידה) —
+// כדי שפעולות ה-DaySheet יעבדו על הנידה של היום שנבחר, גם נידת-עבר.
+export function effectivePhaseFor(cycle) {
+  const phase = derivePhase(cycle)
+  if (phase !== 'counting_7') return phase
+  const cs = evaluateCleanDays(cycle?.cleanDays ?? [])
+  if (cs.status === 'blocked') return 'blocked'
+  if (cs.complete)             return 'waiting_mikveh'
+  return 'counting_7'
+}
+
+export function getCellColors(hd, sightings, cycles, vesetMap) {
+  const cycle      = cycleForDate(cycles, hd)
+  const cleanState = evaluateCleanDays(cycle?.cleanDays ?? [])
   const k = `${hd.year}-${hd.month}-${hd.day}`
   const allConcerns = vesetMap[k] ?? []
   // Only show dots for ACTIVE (non-uprooted) concerns
@@ -129,12 +178,17 @@ export function getCellColors(hd, sightings, cycle, vesetMap, cleanState) {
     const onset      = cycle.latestSighting.hebrewDate
     const hefsekHD   = cycle?.hefsekTahara?.hebrewDate
     const afterOnset = daysBetween(onset, hd) > 0
+    // טרם נעשה הפסק — טמאה מהראייה ועד היום, אך *תחומה* לנידה: אם יש נידה מאוחרת
+    // יותר, עוצרים יום לפני ה-onset שלה (נידת-עבר לא נמרחת אדום עד היום).
+    const nextOnset  = nextOnsetAfter(cycles, cycle)
+    const withinOpen = nextOnset
+      ? daysBetween(hd, nextOnset) > 0
+      : daysBetween(hd, todayHebrew()) >= 0
     const inTamei = hefsekHD
       // הדם הראשון < יום < ההפסק האחרון (יום ההפסק עצמו נצבע כתום בהמשך)
       ? afterOnset && daysBetween(hd, hefsekHD) > 0
-      // עוד לא נעשה הפסק — טמאה מהראייה ועד היום
       : afterOnset && (cycle.phase === 'waiting_5_days' || cycle.phase === 'waiting_hefsek')
-          && daysBetween(hd, todayHebrew()) >= 0
+          && withinOpen
     if (inTamei) {
       return { nightColor: 'bg-rose-200', dayColor: 'bg-rose-100', dayText: 'text-rose-900',
                nightConcerns, dayConcerns, type: 'waiting', dayNum: null }
@@ -348,7 +402,7 @@ export function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetCo
   async function doHefsek() {
     setLoading(true)
     try {
-      await api.recordHefsek({ gregorianDatetime: new Date().toISOString(), hebrewDate: hd })
+      await api.recordHefsek({ gregorianDatetime: new Date().toISOString(), hebrewDate: hd, cycleId: cycle?._id })
       await onRefresh(); setView('main')
     } catch (e) { alert(e.message) }
     finally { setLoading(false) }
@@ -357,7 +411,7 @@ export function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetCo
   async function doBedika(type, result) {
     setLoading(true)
     try {
-      await api.recordBedika({ dayNumber: cellColors?.dayNum, hebrewDate: hd, type, result })
+      await api.recordBedika({ dayNumber: cellColors?.dayNum, hebrewDate: hd, type, result, cycleId: cycle?._id })
       await onRefresh()
     } catch (e) { alert(e.message) }
     finally { setLoading(false) }
@@ -366,7 +420,7 @@ export function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetCo
   async function doMikveh() {
     setLoading(true)
     try {
-      await api.recordMikveh({ gregorianDatetime: new Date().toISOString() })
+      await api.recordMikveh({ gregorianDatetime: new Date().toISOString(), cycleId: cycle?._id })
       await onRefresh(); onClose()
     } catch (e) { alert(e.message) }
     finally { setLoading(false) }
@@ -839,7 +893,7 @@ export default function Dashboard() {
   const [now, setNow]             = useState(new Date())
 
   const {
-    cycle, sightings, dataLoaded, error, refresh,
+    cycle, cycles, sightings, dataLoaded, error, refresh,
     cleanState, effectivePhase, vesetConcerns, vesetMap,
   } = useMikvaEngine()
 
@@ -889,8 +943,13 @@ export default function Dashboard() {
   function goPrev() { const p = prevHMonth(dispYear, dispMonth); setDispYear(p.year); setDispMonth(p.month) }
 
   const selectedColors = selected
-    ? getCellColors(selected, sightings, cycle, vesetMap, cleanState)
+    ? getCellColors(selected, sightings, cycles, vesetMap)
     : null
+
+  // הנידה שמכסה את היום שנבחר — פעולות ה-DaySheet פועלות עליה (כולל נידת-עבר).
+  const selCycle      = selected ? cycleForDate(cycles, selected) : null
+  const selCleanState = useMemo(() => evaluateCleanDays(selCycle?.cleanDays ?? []), [selCycle])
+  const selPhase      = selCycle ? effectivePhaseFor(selCycle) : effectivePhase
 
   if (error) return (
     <div className="min-h-screen bg-white flex items-center justify-center p-8 text-center" dir="rtl">
@@ -966,7 +1025,7 @@ export default function Dashboard() {
               const hd      = { year: dispYear, month: dispMonth, day }
               const isToday = day === todayDay && dispMonth === todayMonth && dispYear === todayYear
               const isSel   = selected && hebrewDateEquals(hd, selected)
-              const colors  = getCellColors(hd, sightings, cycle, vesetMap, cleanState)
+              const colors  = getCellColors(hd, sightings, cycles, vesetMap)
               return (
                 <DayCell
                   key={i}
@@ -1010,12 +1069,12 @@ export default function Dashboard() {
         <DaySheet
           hd={selected}
           cellColors={selectedColors}
-          cycle={cycle}
-          cleanState={cleanState}
+          cycle={selCycle}
+          cleanState={selCleanState}
           sightings={sightings}
           vesetConcerns={vesetConcerns}
           location={location}
-          phase={effectivePhase}
+          phase={selPhase}
           onClose={() => setSelected(null)}
           onRefresh={refresh}
         />

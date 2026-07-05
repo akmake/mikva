@@ -11,11 +11,14 @@ import tzlookup from 'tz-lookup'
 import { useMikvaEngine } from '../lib/useMikvaEngine'
 import {
   getCellColors,
+  cycleForDate,
+  effectivePhaseFor,
   DaySheet,
   SettingsSheet,
   PHASE_CFG,
   phaseDetailText,
 } from './Dashboard'
+import { evaluateCleanDays } from '../lib/cleanDaysEngine'
 
 // ── Hebrew helpers ────────────────────────────────────────────────────────────
 
@@ -211,7 +214,7 @@ export default function HebrewCalendarPage() {
 
   // ── Shared halachic engine (identical to the "/" dashboard) ──
   const {
-    cycle, sightings, dataLoaded, error, refresh,
+    cycle, cycles, sightings, dataLoaded, error, refresh,
     cleanState, effectivePhase, vesetConcerns, vesetMap,
   } = useMikvaEngine()
 
@@ -222,8 +225,13 @@ export default function HebrewCalendarPage() {
   )
 
   const sheetColors = sheetHd
-    ? getCellColors(sheetHd, sightings, cycle, vesetMap, cleanState)
+    ? getCellColors(sheetHd, sightings, cycles, vesetMap)
     : null
+
+  // הנידה שמכסה את היום שנבחר בשיט־action — פעולות פר-נידה (כולל נידת-עבר).
+  const sheetCycle      = sheetHd ? cycleForDate(cycles, sheetHd) : null
+  const sheetCleanState = useMemo(() => evaluateCleanDays(sheetCycle?.cleanDays ?? []), [sheetCycle])
+  const sheetPhase      = sheetCycle ? effectivePhaseFor(sheetCycle) : effectivePhase
 
   // current period for today (to colour the cells)
   const todayPeriods = useMemo(() => {
@@ -306,11 +314,11 @@ export default function HebrewCalendarPage() {
 
         <div className="grid overflow-hidden border border-stone-300 bg-white shadow-[0_18px_60px_rgba(41,37,36,0.07)] lg:grid-cols-[minmax(0,1fr)_320px]">
           <section className="p-4 sm:p-7 lg:p-9">
-          <div className="flex items-center justify-between border-b border-stone-200 pb-5">
+          <div className="flex items-center justify-between pb-5">
             <button
               onClick={() => { const p=prevMonth(dispYear,dispMonth); setDispYear(p.year); setDispMonth(p.month) }}
               aria-label="החודש הקודם"
-              className="flex h-10 w-10 items-center justify-center border border-stone-200 text-xl text-stone-500 transition hover:border-stone-500 hover:text-stone-900 active:scale-95"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-xl text-stone-500 transition hover:bg-stone-200 hover:text-stone-900 active:scale-95"
             >›</button>
 
             <div className="text-center">
@@ -321,7 +329,7 @@ export default function HebrewCalendarPage() {
             <button
               onClick={() => { const n=nextMonth(dispYear,dispMonth); setDispYear(n.year); setDispMonth(n.month) }}
               aria-label="החודש הבא"
-              className="flex h-10 w-10 items-center justify-center border border-stone-200 text-xl text-stone-500 transition hover:border-stone-500 hover:text-stone-900 active:scale-95"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-xl text-stone-500 transition hover:bg-stone-200 hover:text-stone-900 active:scale-95"
             >‹</button>
           </div>
 
@@ -329,15 +337,15 @@ export default function HebrewCalendarPage() {
             {!isCurrentMonth && <button onClick={() => { setDispYear(todayYear); setDispMonth(todayMonth) }} className="text-xs font-semibold text-teal-800 underline decoration-teal-300 underline-offset-4 hover:text-teal-950">חזרה לחודש הנוכחי</button>}
           </div>
 
-          <div className="grid grid-cols-7 border-b border-stone-200">
+          <div className="mb-1 grid grid-cols-7 rounded-xl bg-stone-50">
             {DAY_HEADERS.map((h, idx) => (
-              <div key={h} className={`py-3 text-center text-[11px] font-semibold ${idx===6 ? 'text-teal-700' : 'text-stone-400'}`}>{h}</div>
+              <div key={h} className={`py-3 text-center text-[11px] font-semibold tracking-wide ${idx===6 ? 'text-teal-700' : 'text-stone-400'}`}>{h}</div>
             ))}
           </div>
 
           <div className="grid grid-cols-7">
             {cells.map((day, i) => {
-              if (!day) return <div key={i} className="aspect-square border-b border-l border-stone-100" />
+              if (!day) return <div key={i} className="aspect-square" />
 
               const hd       = { year: dispYear, month: dispMonth, day }
               const today    = isToday(day)
@@ -346,10 +354,10 @@ export default function HebrewCalendarPage() {
               const activeDay   = isTodayDay(day)
               const isShabbat = (i % 7) === 6
 
-              // Halachic status colours (night = right 2/5, day = left) — same
+              // Halachic status colours (night and day are split evenly) — same
               // engine the "/" dashboard uses.
               const colors = dataLoaded
-                ? getCellColors(hd, sightings, cycle, vesetMap, cleanState)
+                ? getCellColors(hd, sightings, cycles, vesetMap)
                 : null
               const nightColor    = colors?.nightColor ?? 'bg-transparent'
               const dayColor      = colors?.dayColor   ?? 'bg-transparent'
@@ -361,21 +369,20 @@ export default function HebrewCalendarPage() {
                   key={i}
                   onClick={() => { setSel(hd); setSheetHd(hd) }}
                   aria-label={`${DAY_LETTERS[day]} ${monthName}`}
-                  className={`group relative aspect-square overflow-hidden border-b border-l border-stone-100 flex items-center justify-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-700 ${
+                  className={`group relative flex aspect-square items-center justify-center rounded-xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-700 ${
                     selected ? 'ring-2 ring-inset ring-teal-800 z-10'
-                    : today   ? 'ring-2 ring-inset ring-teal-400 z-10'
-                              : 'hover:brightness-95'
+                    : 'hover:bg-stone-50'
                   }`}
                 >
                   {/* status background — night | day split */}
-                  <span className="absolute inset-0 flex">
-                    <span className={`w-2/5 ${nightColor}`} />
-                    <span className={`flex-1 ${dayColor}`} />
+                  <span className={`absolute inset-1 flex overflow-hidden rounded-lg shadow-[inset_0_0_0_1px_rgba(120,113,108,0.08)] ${isShabbat ? 'bg-teal-50/60' : 'bg-white'}`}>
+                    <span className={`w-1/2 ${nightColor}`} />
+                    <span className={`w-1/2 ${dayColor}`} />
                   </span>
 
-                  <span className={`relative text-sm leading-none sm:text-base ${
+                  <span className={`relative flex h-8 min-w-8 items-center justify-center rounded-full px-1 text-sm leading-none transition sm:text-base ${
                     colors?.dayText ?? (isShabbat ? 'text-teal-700' : 'text-stone-700')
-                  } ${selected || today ? 'font-semibold' : 'font-normal'}`}>
+                  } ${today ? 'bg-teal-800 font-semibold !text-white shadow-sm' : selected ? 'font-semibold' : 'font-normal'}`}>
                     {DAY_LETTERS[day]}
                   </span>
 
@@ -385,7 +392,7 @@ export default function HebrewCalendarPage() {
                   {(activeNight || activeDay) && (
                     <span className="absolute bottom-1.5 right-1.5 h-1 w-1 rounded-full bg-gray-500 opacity-60 animate-pulse" />
                   )}
-                  {today && <span className="absolute right-1.5 top-1.5 text-[8px] font-semibold text-teal-700">היום</span>}
+                  {today && <span className="absolute right-2 top-2 text-[8px] font-semibold text-teal-800">היום</span>}
                 </button>
               )
             })}
@@ -407,8 +414,8 @@ export default function HebrewCalendarPage() {
                 ].map(({ label, night, day }) => (
                   <div key={label} className="flex items-center gap-2.5">
                     <span className="flex h-4 w-6 overflow-hidden border border-stone-200">
-                      <span className={`w-2/5 ${night}`} />
-                      <span className={`flex-1 ${day}`} />
+                      <span className={`w-1/2 ${night}`} />
+                      <span className={`w-1/2 ${day}`} />
                     </span>
                     <span className="text-xs text-stone-500">{label}</span>
                   </div>
@@ -439,12 +446,12 @@ export default function HebrewCalendarPage() {
         <DaySheet
           hd={sheetHd}
           cellColors={sheetColors}
-          cycle={cycle}
-          cleanState={cleanState}
+          cycle={sheetCycle}
+          cleanState={sheetCleanState}
           sightings={sightings}
           vesetConcerns={vesetConcerns}
           location={location}
-          phase={effectivePhase}
+          phase={sheetPhase}
           onClose={() => setSheetHd(null)}
           onRefresh={refresh}
         />

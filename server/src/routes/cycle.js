@@ -5,9 +5,29 @@ import Sighting from '../models/Sighting.js'
 
 const router = Router()
 
-// המחזור הנוכחי = הנידה האחרונה (האחרונה שנוצרה), עם הדימומים שלה.
+// זמן ה-onset של נידה = הדם המוקדם ביותר בה (fallback: createdAt לנידה ריקה).
+function onsetTime(cycle) {
+  if (cycle.bleedings?.length)
+    return Math.min(...cycle.bleedings.map((b) => +new Date(b.gregorianDatetime)))
+  return +new Date(cycle.createdAt)
+}
+
+// המחזור הנוכחי = הנידה הכרונולוגית האחרונה (ה-onset המאוחר ביותר), עם הדימומים
+// שלה. לא לפי createdAt — כי תיעוד-עבר יוצר נידות מחוץ לסדר ההקלדה.
 async function currentCycle() {
-  return Cycle.findOne().sort({ createdAt: -1 }).populate('bleedings')
+  const cycles = await Cycle.find().populate('bleedings')
+  if (!cycles.length) return null
+  cycles.sort((a, b) => onsetTime(b) - onsetTime(a))
+  return cycles[0]
+}
+
+// נידה מסוימת לפי id (עם דימומים) — לפעולות תהליך על נידת-עבר; נפילה לנוכחית.
+async function cycleByIdOrCurrent(cycleId) {
+  if (cycleId) {
+    const c = await Cycle.findById(cycleId).populate('bleedings')
+    if (c) return c
+  }
+  return currentCycle()
 }
 
 async function settingsDoc() {
@@ -59,8 +79,8 @@ router.get('/history', async (_req, res) => {
 // POST /api/cycle/hefsek-tahara
 router.post('/hefsek-tahara', async (req, res) => {
   try {
-    const { gregorianDatetime, hebrewDate } = req.body
-    const cycle = await currentCycle()
+    const { gregorianDatetime, hebrewDate, cycleId } = req.body
+    const cycle = await cycleByIdOrCurrent(cycleId)
     if (!cycle) return res.status(400).json({ error: 'no active cycle' })
 
     cycle.hefsekTahara = { gregorianDatetime: new Date(gregorianDatetime), hebrewDate }
@@ -82,8 +102,8 @@ router.post('/hefsek-tahara', async (req, res) => {
 // POST /api/cycle/bedika  { dayNumber, hebrewDate, type, result }
 router.post('/bedika', async (req, res) => {
   try {
-    const { dayNumber, hebrewDate, type, result } = req.body
-    const cycle = await currentCycle()
+    const { dayNumber, hebrewDate, type, result, cycleId } = req.body
+    const cycle = await cycleByIdOrCurrent(cycleId)
     if (!cycle) return res.status(400).json({ error: 'no active cycle' })
 
     let day = cycle.cleanDays.find(d => d.dayNumber === dayNumber)
@@ -109,8 +129,8 @@ router.post('/bedika', async (req, res) => {
 // POST /api/cycle/mikveh — סוגר את הנידה (status=completed). ראיה חדשה אחריה = נידה חדשה.
 router.post('/mikveh', async (req, res) => {
   try {
-    const { gregorianDatetime } = req.body
-    const cycle = await currentCycle()
+    const { gregorianDatetime, cycleId } = req.body
+    const cycle = await cycleByIdOrCurrent(cycleId)
     if (!cycle) return res.status(400).json({ error: 'no active cycle' })
 
     cycle.phase = 'tahorah'
