@@ -43,4 +43,12 @@ export const api = {
 
   deleteObservation: (id) =>
     request(`/veset-observations/${id}`, { method: 'DELETE' }),
+
+  // ── mikvas (מפת מקוואות) ────────────────────────────────────────────────
+  getMikvas: (params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return request(`/mikvas${qs ? `?${qs}` : ''}`)
+  },
+
+  getMikvaCities: () => request('/mikvas/cities'),
 }

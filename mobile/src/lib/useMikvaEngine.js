@@ -11,7 +11,7 @@ import { mesulekesWindows } from './veset/mesulekes'
 // the Hebrew calendar page ("/calendar") consume this so their behaviour stays
 // identical.
 
-export function useMikvaEngine() {
+export function useMikvaEngine(viewHD = null) {
   const [cycle,        setCycle]        = useState(null)
   const [cycles,       setCycles]       = useState([])
   const [sightings,    setSightings]    = useState([])
@@ -79,9 +79,11 @@ export function useMikvaEngine() {
       cycle?.onaBeinonit31 ?? false,
       [],    // tevilaDates
       true,  // includeHistory — ימי חשש היסטוריים (מצטברים) לתצוגה בלוח
+      viewHD, // החודש הנצפה — סדרת העונה בינונית מתרחבת עד אליו (לא נעצרת באופק קבוע)
     ),
     [sightings, observations, hefsekMap, mesulekesWins, isMesulekes,
-     cycle?.useShuar, cycle?.day30Policy, cycle?.onaBeinonit31],
+     cycle?.useShuar, cycle?.day30Policy, cycle?.onaBeinonit31,
+     viewHD?.year, viewHD?.month],
   )
 
   const vesetMap = useMemo(() => {

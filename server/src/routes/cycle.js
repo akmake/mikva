@@ -53,6 +53,8 @@ function serialize(cycle, settings) {
     useShuar:       settings.useShuar,
     onaBeinonit31:  settings.onaBeinonit31,
     day30Policy:    settings.day30Policy,
+    pregnancyPromptDays:       settings.pregnancyPromptDays,
+    pregnancyPromptSnoozedFor: settings.pregnancyPromptSnoozedFor,
   }
 }
 
@@ -149,6 +151,7 @@ router.post('/settings', async (req, res) => {
     const {
       isPregnant, pregnancyStart, isMeineket, meinaketStart,
       useShuar, onaBeinonit31, day30Policy,
+      pregnancyPromptDays, pregnancyPromptSnoozedFor,
     } = req.body
     const s = await settingsDoc()
     if (isPregnant !== undefined) s.isPregnant = isPregnant
@@ -158,6 +161,8 @@ router.post('/settings', async (req, res) => {
     if (useShuar !== undefined) s.useShuar = useShuar
     if (onaBeinonit31 !== undefined) s.onaBeinonit31 = onaBeinonit31
     if (day30Policy !== undefined) s.day30Policy = day30Policy
+    if (pregnancyPromptDays !== undefined) s.pregnancyPromptDays = pregnancyPromptDays
+    if (pregnancyPromptSnoozedFor !== undefined) s.pregnancyPromptSnoozedFor = pregnancyPromptSnoozedFor
     await s.save()
 
     res.json(serialize(await currentCycle(), s))

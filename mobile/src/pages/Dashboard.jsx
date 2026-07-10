@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { JewishCalendar, ComplexZmanimCalendar, GeoLocation, ZmanimFormatter, DateTime } from 'kosher-zmanim'
 import tzlookup from 'tz-lookup'
 import { api } from '../lib/api'
@@ -893,16 +893,109 @@ export function SettingsSheet({ cycle, onClose, onRefresh }) {
               </div>
             </Row>
             <Row title="הריון" desc="מצב מסולקת דמים — ממתן חששות ווסת">
-              <Toggle on={!!cycle?.isPregnant} onChange={v => save({ isPregnant: v })} />
+              <Toggle on={!!cycle?.isPregnant} onChange={v => save(
+                v ? { isPregnant: true, pregnancyStart: cycle?.latestSighting?.gregorianDatetime ?? null }
+                  : { isPregnant: false })} />
             </Row>
             <Row title="מניקה" desc="מצב מסולקת דמים — ממתן חששות ווסת">
               <Toggle on={!!cycle?.isMeineket} onChange={v => save({ isMeineket: v })} />
+            </Row>
+            <Row title="שאלת הריון" desc="ימים מהראייה האחרונה שאחריהם נשאל אם את בהריון (0 = כבוי)">
+              <input
+                type="number" min="0" max="365"
+                defaultValue={cycle?.pregnancyPromptDays ?? 60}
+                onBlur={e => save({ pregnancyPromptDays: Math.max(0, Number(e.target.value) || 0) })}
+                className="w-16 rounded-xl border border-gray-200 bg-white px-2 py-2 text-center text-sm text-gray-800 outline-none focus:border-emerald-500"
+              />
             </Row>
           </div>
 
           <p className="text-gray-400 text-xs mt-5 leading-relaxed">
             ההגדרות משפיעות על חישוב חששות הווסת בלבד. בכל ספק — יש לשאול רב.
           </p>
+
+          {/* ── מחיקת כל הנתונים (מובייל בלבד) ─────────────────────────────── */}
+          <div className="mt-6 border-t border-gray-100 pt-5">
+            <h3 className="text-sm font-bold text-red-600 mb-1">איפוס האפליקציה</h3>
+            <p className="text-gray-400 text-xs mb-3 leading-relaxed">
+              מחיקה לצמיתות של כל הראיות, הנידות, הבדיקות וההגדרות מהמכשיר. אין חזרה.
+            </p>
+            <button
+              onClick={async () => {
+                if (!window.confirm('למחוק לצמיתות את כל הנתונים? כל הראיות, הנידות, הבדיקות וההגדרות יימחקו. אין חזרה.')) return
+                setLoading(true)
+                try {
+                  await api.clearAllData()
+                  window.location.reload()
+                } catch (e) {
+                  alert(e.message)
+                  setLoading(false)
+                }
+              }}
+              className="w-full rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 active:scale-[0.98] transition"
+            >
+              מחיקת כל הנתונים
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Pregnancy prompt ────────────────────────────────────────────────────────
+// מוקפץ כשעברו pregnancyPromptDays מהראייה האחרונה ללא ראייה חדשה. "כן" → מסמן
+// הריון עם pregnancyStart = תאריך הראייה האחרונה (סילוק חששות מ-90 יום אחריה,
+// mesulekes.js). "לא" → נודניק מושתק לנידה הזו (pregnancyPromptSnoozedFor).
+export function shouldAskPregnancy(cycle) {
+  const onset = cycle?.latestSighting
+  if (!onset?.hebrewDate) return false
+  const days = Number(cycle?.pregnancyPromptDays ?? 60)
+  if (!days || days <= 0) return false
+  if (cycle?.isPregnant || cycle?.isMeineket) return false
+  if (cycle?.status === 'completed') return false
+  if (cycle?.pregnancyPromptSnoozedFor && String(cycle.pregnancyPromptSnoozedFor) === String(onset._id)) return false
+  return daysBetween(onset.hebrewDate, todayHebrew()) >= days
+}
+
+export function PregnancyPrompt({ cycle, onRefresh, onClose }) {
+  const [loading, setLoading] = useState(false)
+  const onset = cycle?.latestSighting
+  const days = onset ? daysBetween(onset.hebrewDate, todayHebrew()) : 0
+
+  async function answer(pregnant) {
+    setLoading(true)
+    try {
+      if (pregnant) {
+        await api.updateSettings({ isPregnant: true, pregnancyStart: onset.gregorianDatetime })
+      } else {
+        await api.updateSettings({ pregnancyPromptSnoozedFor: String(onset._id) })
+      }
+      await onRefresh()
+      onClose()
+    } catch (e) { alert(e.message) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-stone-950/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div dir="rtl" className="fixed inset-x-4 top-1/2 z-[70] mx-auto max-w-sm -translate-y-1/2 rounded-3xl border border-stone-200 bg-[#fcfbf8] p-6 shadow-2xl sm:inset-x-0">
+        <div className="mb-2 text-center text-4xl">🤍</div>
+        <h2 className="mb-2 text-center text-xl font-semibold text-stone-900">האם את בהריון?</h2>
+        <p className="mb-6 text-center text-sm leading-6 text-stone-500">
+          עברו {days} ימים מהראייה האחרונה ללא ראייה חדשה. אם את בהריון, לאחר שלושה
+          חודשים נפסיק להציג חששות ווסת (מצב מסולקת דמים).
+        </p>
+        <div className="flex gap-2">
+          <button onClick={() => answer(false)} disabled={loading}
+            className="flex-1 rounded-xl border border-stone-200 bg-white py-3 text-sm font-medium text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 disabled:opacity-40">
+            לא
+          </button>
+          <button onClick={() => answer(true)} disabled={loading}
+            className="flex-1 rounded-xl bg-teal-700 py-3 text-sm font-semibold text-white shadow transition hover:bg-teal-800 disabled:opacity-40">
+            {loading ? '…' : 'כן, אני בהריון'}
+          </button>
         </div>
       </div>
     </>
@@ -923,11 +1016,15 @@ export default function Dashboard() {
   const [showSettings, setShowSettings] = useState(false)
   const [location,  setLocation]  = useState(null)
   const [now, setNow]             = useState(new Date())
+  const [pregPromptOpen, setPregPromptOpen] = useState(false)
+  const pregAsked = useRef(false)
 
+  // סדרת העונה בינונית מתרחבת עד החודש הנצפה (לא נעצרת באופק קבוע).
+  const viewHD = useMemo(() => ({ year: dispYear, month: dispMonth, day: 1 }), [dispYear, dispMonth])
   const {
     cycle, cycles, sightings, dataLoaded, error, refresh,
     cleanState, effectivePhase, vesetConcerns, vesetMap,
-  } = useMikvaEngine()
+  } = useMikvaEngine(viewHD)
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -944,6 +1041,14 @@ export default function Dashboard() {
     const t = setInterval(() => setNow(new Date()), 60_000)
     return () => clearInterval(t)
   }, [])
+
+  // שאלת הריון — פעם אחת לכל טעינה, כשעברו pregnancyPromptDays מהראייה האחרונה
+  useEffect(() => {
+    if (dataLoaded && !pregAsked.current && shouldAskPregnancy(cycle)) {
+      pregAsked.current = true
+      setPregPromptOpen(true)
+    }
+  }, [dataLoaded, cycle])
 
   // Current period for today
   const currentPeriod = useMemo(() => {
@@ -1122,6 +1227,15 @@ export default function Dashboard() {
           cycle={cycle}
           onClose={() => setShowSettings(false)}
           onRefresh={refresh}
+        />
+      )}
+
+      {/* ── Pregnancy prompt ── */}
+      {pregPromptOpen && (
+        <PregnancyPrompt
+          cycle={cycle}
+          onRefresh={refresh}
+          onClose={() => setPregPromptOpen(false)}
         />
       )}
     </main>

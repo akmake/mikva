@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   JewishCalendar,
@@ -17,6 +17,8 @@ import {
   SettingsSheet,
   PHASE_CFG,
   phaseDetailText,
+  PregnancyPrompt,
+  shouldAskPregnancy,
 } from './Dashboard'
 import { evaluateCleanDays } from '../lib/cleanDaysEngine'
 
@@ -211,12 +213,17 @@ export default function HebrewCalendarPage() {
   const [showSettings, setShowSettings] = useState(false)
   const [location, setLocation]   = useState(null)
   const [now, setNow]             = useState(new Date())
+  const [pregPromptOpen, setPregPromptOpen] = useState(false)
+  const pregAsked = useRef(false)
 
   // ── Shared halachic engine (identical to the "/" dashboard) ──
+  // סדרת העונה בינונית מתרחבת עד החודש הנצפה — כך כל חודש שמנווטים אליו מציג את
+  // החשש (עונה בינונית אינה מתבטלת לעולם בלי ווסת קבוע).
+  const viewHD = useMemo(() => ({ year: dispYear, month: dispMonth, day: 1 }), [dispYear, dispMonth])
   const {
     cycle, cycles, sightings, dataLoaded, error, refresh,
     cleanState, effectivePhase, vesetConcerns, vesetMap,
-  } = useMikvaEngine()
+  } = useMikvaEngine(viewHD)
 
   const phaseCfg    = PHASE_CFG[effectivePhase] ?? PHASE_CFG.tahorah
   const phaseDetail = useMemo(
@@ -270,6 +277,14 @@ export default function HebrewCalendarPage() {
     const t = setInterval(() => setNow(new Date()), 60_000)
     return () => clearInterval(t)
   }, [])
+
+  // שאלת הריון — פעם אחת לכל טעינה, כשעברו pregnancyPromptDays מהראייה האחרונה
+  useEffect(() => {
+    if (dataLoaded && !pregAsked.current && shouldAskPregnancy(cycle)) {
+      pregAsked.current = true
+      setPregPromptOpen(true)
+    }
+  }, [dataLoaded, cycle])
 
   const cells     = buildGrid(dispYear, dispMonth)
   const monthName = dispMonth===12 && JewishCalendar.isJewishLeapYear(dispYear)
@@ -473,6 +488,15 @@ export default function HebrewCalendarPage() {
           cycle={cycle}
           onClose={() => setShowSettings(false)}
           onRefresh={refresh}
+        />
+      )}
+
+      {/* Pregnancy prompt */}
+      {pregPromptOpen && (
+        <PregnancyPrompt
+          cycle={cycle}
+          onRefresh={refresh}
+          onClose={() => setPregPromptOpen(false)}
         />
       )}
     </main>

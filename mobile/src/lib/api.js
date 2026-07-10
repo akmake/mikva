@@ -1,53 +1,62 @@
-import { Capacitor } from '@capacitor/core'
+// שכבת התעבורה — כעת אופליין מלא. אין fetch ואין שרת: כל הנתונים נשמרים על
+// המכשיר (localStore מעל @capacitor/preferences). המנוע ההלכתי מייבא את `api`
+// בדיוק כמו קודם ולא יודע דבר על השינוי — אותם שמות, אותן צורות תשובה.
+import * as store from './localStore'
+import mikvaot from '../data/mikvaot.json'
 
-// כתובת בסיס של השרת (מחסן הנתונים). ההלכה מחושבת מקומית — זו רק שכבת התעבורה.
-//  • דפדפן dev  → '/api' (vite proxy → localhost:5001)
-//  • אמולטור/מכשיר → 10.0.2.2:5001 (אמולטור) או כתובת פרוד — ניתן לעקוף עם VITE_API_BASE
-const BASE =
-  import.meta.env.VITE_API_BASE ??
-  (Capacitor.isNativePlatform() ? 'http://10.0.2.2:5001/api' : '/api')
+// ── מקוואות (אופליין) ────────────────────────────────────────────────────────
+// פורט נאמן של server/src/routes/mikvas.js אל נתונים מוטמעים במכשיר. אותם
+// פרמטרים ואותה צורת תשובה שהמפה (MapPage) מצפה להם — רק בלי fetch/שרת.
+function filterMikvas({ city, q, withCoords, supervised } = {}) {
+  let list = mikvaot
+  if (city) list = list.filter((m) => m.city === city)
+  if (String(withCoords) === '1') list = list.filter((m) => m.lat != null)
+  if (String(supervised) === '1') list = list.filter((m) => m.supervised === true)
+  if (String(supervised) === '0') list = list.filter((m) => m.supervised === false)
+  if (q) {
+    const needle = String(q).toLowerCase()
+    list = list.filter((m) =>
+      `${m.name ?? ''} ${m.address ?? ''} ${m.city ?? ''}`.toLowerCase().includes(needle),
+    )
+  }
+  return [...list].sort((a, b) =>
+    (a.city ?? '').localeCompare(b.city ?? '', 'he') || (a.name ?? '').localeCompare(b.name ?? '', 'he'),
+  )
+}
 
-async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
-  return data
+function mikvaCities() {
+  const counts = new Map()
+  for (const m of mikvaot) {
+    if (!m.city) continue
+    counts.set(m.city, (counts.get(m.city) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count)
 }
 
 export const api = {
   // ── sightings ──────────────────────────────────────────────────────────
-  getSightings: () => request('/sightings'),
-
-  recordSighting: (payload) =>
-    request('/sightings', { method: 'POST', body: JSON.stringify(payload) }),
+  getSightings: () => store.getSightings(),
+  recordSighting: (payload) => store.recordSighting(payload),
 
   // ── cycle ──────────────────────────────────────────────────────────────
-  getCycle: () => request('/cycle'),
-
-  // כל הנידות (עם bleedings) — לקיבוץ נידות בחישוב הווסתות
-  getCycles: () => request('/cycle/history'),
-
-  recordHefsek: (payload) =>
-    request('/cycle/hefsek-tahara', { method: 'POST', body: JSON.stringify(payload) }),
-
-  recordBedika: (payload) =>
-    request('/cycle/bedika', { method: 'POST', body: JSON.stringify(payload) }),
-
-  recordMikveh: (payload) =>
-    request('/cycle/mikveh', { method: 'POST', body: JSON.stringify(payload) }),
-
-  updateSettings: (payload) =>
-    request('/cycle/settings', { method: 'POST', body: JSON.stringify(payload) }),
+  getCycle: () => store.getCycle(),
+  getCycles: () => store.getCycles(), // כל הנידות (עם bleedings) — לחישוב הווסתות
+  recordHefsek: (payload) => store.recordHefsek(payload),
+  recordBedika: (payload) => store.recordBedika(payload),
+  recordMikveh: (payload) => store.recordMikveh(payload),
+  updateSettings: (payload) => store.updateSettings(payload),
 
   // ── veset observations ──────────────────────────────────────────────────
-  getVesetObservations: () => request('/veset-observations'),
+  getVesetObservations: () => store.getVesetObservations(),
+  recordCleanPass: (payload) => store.recordCleanPass(payload),
+  deleteObservation: (id) => store.deleteObservation(id),
 
-  recordCleanPass: (payload) =>
-    request('/veset-observations', { method: 'POST', body: JSON.stringify(payload) }),
+  // ── mikvas (מפת מקוואות — אופליין) ──────────────────────────────────────
+  getMikvas: (params = {}) => Promise.resolve(filterMikvas(params)),
+  getMikvaCities: () => Promise.resolve(mikvaCities()),
 
-  deleteObservation: (id) =>
-    request(`/veset-observations/${id}`, { method: 'DELETE' }),
+  // ── מחיקת כל הנתונים (מובייל בלבד) ───────────────────────────────────────
+  clearAllData: () => store.clearAll(),
 }

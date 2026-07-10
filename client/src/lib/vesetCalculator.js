@@ -220,6 +220,7 @@ export function computeVesetConcerns(
   onaBeinonit31 = false,
   tevilaDates   = [],
   includeHistory = false,
+  viewHD        = null,
 ) {
   if (!sightings || sightings.length === 0) return []
 
@@ -361,9 +362,12 @@ export function computeVesetConcerns(
   // V-15: חוזרת מיד כשהקבוע נעקר בפועל.
   // יום השלושים = ראייה + 29: "ל' יום אלו הם מתחילת ראיה לתחלת ראיה, וב' ימי
   // הראיות בכלל הל'" (כד) — יום הראייה נספר כיום 1 (כמו ספירת 5 הימים).
+  const todayHD = todayHebrew()
   const anyActiveKavua = enriched.some(c => c.isKavua && !c.uprooted)
   if (!anyActiveKavua) {
-    enriched.push(withUprootingStatus({
+    // המנוע הקדימי מעגן ביום ל' (ראייה+29). אם הוא כבר עבר → passed=true (אפור),
+    // בדיוק כמו שאר מופעי הסדרה ההיסטוריים; המופעים העתידיים (מהסדרה למטה) כתומים.
+    const ob30 = withUprootingStatus({
       id:         'ona_beinonit',
       type:       'ona_beinonit',
       label:      'עונה בינונית',
@@ -373,11 +377,13 @@ export function computeVesetConcerns(
       kavuaCount: 0,
       canUproot:  false,
       relatedSightingId: lastOnset._id,
-    }, observations))
+    }, observations)
+    ob30.passed = chronCompare(ob30.hebrewDate, todayHD) < 0
+    enriched.push(ob30)
 
     // V-12: חומרת יום ל"א (הגדרה) = ראייה + 30. פרישה בעונת הראייה בלבד (כד,כט).
     if (onaBeinonit31) {
-      enriched.push(withUprootingStatus({
+      const ob31 = withUprootingStatus({
         id:         'ona_beinonit_31',
         type:       'ona_beinonit',
         label:      'עונה בינונית (יום ל"א)',
@@ -387,7 +393,9 @@ export function computeVesetConcerns(
         kavuaCount: 0,
         canUproot:  false,
         relatedSightingId: lastOnset._id,
-      }, observations))
+      }, observations)
+      ob31.passed = chronCompare(ob31.hebrewDate, todayHD) < 0
+      enriched.push(ob31)
     }
   }
 
@@ -398,8 +406,13 @@ export function computeVesetConcerns(
   // האחרונה עד אופק עתידי. כן פולטים חודש/הפלגה של נידות-עבר. המנוע הקדימי
   // (enriched) נשאר כמות שהוא; passed=true (מוצג אפור) אם עבר תאריך החשש.
   if (includeHistory) {
-  const todayHD  = todayHebrew()
-  const HORIZON  = 210 // ~7 חודשים קדימה לסדרת העונה בינונית של הנידה האחרונה
+  // אופק סדרת העונה בינונית של הנידה האחרונה. עונה בינונית "אינה מתבטלת לעולם"
+  // בלי ווסת קבוע (כד,סה) וחוזרת משלושים לשלושים — לכן היא נוצרת לכל חודש שאליו
+  // מנווטים, ולא נעצרת באופק קבוע. viewHD = החודש הנצפה (יום 1); מרחיבים עד סופו
+  // + חודש. בהיעדרו (טסטים/קריאות ישנות) — ברירת מחדל של ~7 חודשים קדימה.
+  const defaultFar = addHebrewDays(todayHD, 210)
+  const viewFar    = viewHD ? addHebrewDays(viewHD, 45) : null
+  const farBound   = (viewFar && chronCompare(viewFar, defaultFar) > 0) ? viewFar : defaultFar
   const seenKeys = new Set(
     enriched.map(c => `${c.type}|${c.hebrewDate.year}-${c.hebrewDate.month}-${c.hebrewDate.day}|${c.onah}`),
   )
@@ -420,12 +433,12 @@ export function computeVesetConcerns(
     const O       = onsets[i]
     const nextO   = onsets[i + 1] ?? null
     // גבול עליון (בלעדי): ה-onset של הנידה הבאה, או אופק עתידי לנידה האחרונה.
-    const bound   = nextO ? nextO.hebrewDate : addHebrewDays(todayHD, HORIZON)
+    const bound   = nextO ? nextO.hebrewDate : farBound
 
     // עונה בינונית מצטברת — יום ל', ואם עבר בנקיות שוב יום ל' וכן הלאה (רק כשאין
     // ווסת קבוע פעיל, V-11 — כמו המנוע הקדימי).
     if (!anyActiveKavua) {
-      for (let k = 0; k < 24; k++) {
+      for (let k = 0; k < 1200; k++) {   // תקרת בטיחות בלבד — הגבול האמיתי הוא bound
         const d30 = addHebrewDays(O.hebrewDate, 29 + 30 * k)
         if (chronCompare(d30, bound) >= 0) break
         pushHist('ona_beinonit', 'עונה בינונית', d30, 'full_day', O._id)
@@ -449,6 +462,15 @@ export function computeVesetConcerns(
       }
     }
   }
+  }
+
+  // V-95 (המשך): גם חששות העונה בינונית — הקדמי וההיסטורי — נוספו *אחרי* פילטר
+  // הסילוק לעיל, ולכן מסננים שוב את המערך המלא. חשש מראייה שלפני הסילוק שיום החשש
+  // חל בתוך החלון → אינה חוששת (רק כשהראייה האחרונה אינה בחלון; V-94 נשמר ע"י הדילוג).
+  if (mesulekesWins.length && !lastInWindow) {
+    enriched = enriched.filter(
+      c => !inMesulekes(mesulekesWins, hebrewDateToGregorian(c.hebrewDate).getTime()),
+    )
   }
 
   return enriched.sort((a, b) => compareHebrewDates(a.hebrewDate, b.hebrewDate))

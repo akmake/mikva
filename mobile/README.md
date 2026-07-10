@@ -5,36 +5,39 @@
 
 ## עקרונות
 
+- **אופליין מלא — אין תלות בשרת.**
+  - **זמני היום** מחושבים מקומית ב-`kosher-zmanim` על המכשיר.
+  - **נתוני הטהרה** (ראיות, נידות, הגדרות, תצפיות) נשמרים על המכשיר ב-
+    `@capacitor/preferences` (בדפדפן dev — נופל אוטומטית ל-localStorage).
 - **המנוע ההלכתי לא שונה.** קבצי הלוגיקה הועתקו byte-for-byte מ-`client/src/lib`
   ומ-`client/src/pages` (`Dashboard.jsx`, `HebrewCalendarPage.jsx`). אין לגעת בהם.
-- **זמני היום מחושבים מקומית** ב-`kosher-zmanim` על המכשיר — ללא אינטרנט.
-- **נתוני הטהרה** (ראיות, נידות, הגדרות) עוברים דרך שרת ה-API הקיים (`server/`),
-  בדיוק כפי ש-AndroidMikva עבד. אחסון אופליין מלא = מיילסטון עוקב.
+- שכבת האחסון `src/lib/localStore.js` היא **פורט נאמן** של לוגיקת השרת
+  (`server/src/routes/sightings.js` + `cycle.js`) — שיוך ראיה לנידה כרונולוגית,
+  כלל 7 הימים, איפוס ספירה על דם. אותם כללים בדיוק, בלי הלכה חדשה.
+  `src/lib/api.js` הוא מתאם דק שמפנה את המנוע ל-localStore במקום ל-fetch.
 - המסך היחיד המנותב הוא `HebrewCalendarPage` ("לוח עברי"). `Dashboard.jsx`
   מיובא רק כדי לספק את `DaySheet` / `getCellColors` / `SettingsSheet`; מסך "היום"
   אינו מוצג.
-
-## כתובת השרת (`src/lib/api.js`)
-
-- דפדפן dev → `/api` (פרוקסי של vite אל `localhost:5001`)
-- אמולטור/מכשיר → `http://10.0.2.2:5001/api` (אמולטור), או `VITE_API_BASE` לעקיפה.
+- קריאת מיקום עוברת דרך shim (`src/lib/geoShim.js`) שמנתב את
+  `navigator.geolocation` לפלאגין `@capacitor/geolocation` על native (טיפול בהרשאות),
+  כדי לשמור על קוד המסך verbatim. בהיעדר מיקום — נפילה חזרה לקואורדינטות ירושלים.
 
 ## הרצה
 
 ```bash
-# פיתוח בדפדפן (צריך את השרת רץ על 5001)
+# פיתוח בדפדפן
 npm install
 npm run dev            # http://localhost:3100
 
-# בנייה + סנכרון ל-Android
-npm run build
-npx cap sync android
-npx cap open android   # פותח ב-Android Studio ל-build/הרצה
+# בניית APK (בטרמינל רגיל — ראה build-apk.ps1)
+powershell -ExecutionPolicy Bypass -File .\build-apk.ps1
+# או ידנית:
+npm run build && npx cap sync android && npx cap open android
 ```
 
-## הערות / לעשות
+APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
 
-- קריאת מיקום משתמשת כרגע ב-`navigator.geolocation` (הקוד שהועתק). על Android
-  ודאו שהרשאת המיקום ניתנת; בהיעדרה יש נפילה חזרה לקואורדינטות ירושלים.
-  שדרוג עתידי: מעבר לפלאגין `@capacitor/geolocation` (כבר מותקן).
-- אחסון אופליין לנתוני טהרה (`@capacitor/preferences` / SQLite) — מיילסטון עוקב.
+## לעשות (עתידי)
+
+- ייצוא/ייבוא גיבוי של נתוני הטהרה (הכל מקומי כרגע — אין סנכרון בין מכשירים).
+- מעבר אופציונלי ל-SQLite אם נפח הנתונים יגדל.
