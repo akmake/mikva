@@ -17,6 +17,9 @@ export const api = {
   recordSighting: (payload) =>
     request('/sightings', { method: 'POST', body: JSON.stringify(payload) }),
 
+  deleteSighting: (id) =>
+    request(`/sightings/${id}`, { method: 'DELETE' }),
+
   // ── cycle ──────────────────────────────────────────────────────────────
   getCycle: () => request('/cycle'),
 

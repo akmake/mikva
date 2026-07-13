@@ -46,9 +46,9 @@ export default function Navbar() {
     }`
 
   return (
-    <nav dir="rtl" className="sticky top-0 z-50 border-b border-stone-200/80 bg-[#f6f5f1]/90 backdrop-blur-xl">
-      <div className="mx-auto max-w-6xl px-4 sm:px-8">
-        <div className="flex h-16 items-center justify-between">
+    <nav dir="rtl" className="sticky top-0 z-50 border-b border-white/40 bg-white/40 backdrop-blur-xl">
+      <div className="mx-auto max-w-6xl px-4 sm:px-10">
+        <div className="flex h-[72px] items-center justify-between">
           <NavLink to="/" className="group flex items-center gap-3" aria-label="מקווה — דף הבית">
             <BrandMark />
             <div className="leading-none">

@@ -19,6 +19,9 @@ export const MONTH_NAMES = {
 
 export const ONAH_HE = { day: 'עונת היום', night: 'עונת הלילה', full_day: 'יממה שלמה' }
 
+// getDayOfWeek() של kosher-zmanim: 1=ראשון .. 7=שבת
+export const DOW_HE = ['', 'ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
+
 const DAY_LETTERS = [
   '', 'א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ז', 'ח', 'ט', 'י',
   'יא', 'יב', 'יג', 'יד', 'טו', 'טז', 'יז', 'יח', 'יט', 'כ',

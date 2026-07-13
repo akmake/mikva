@@ -200,6 +200,24 @@ export async function recordSighting(payload) {
   return { sighting: clone(sighting), cycle: populate(cycle) }
 }
 
+// פורט של DELETE /api/sightings/:id — מסירה את הראייה מהנידה שמכילה אותה;
+// נידה שנשארה בלי ראיות כלל נמחקת. אין Recompute הלכתי מלא של שאר השדות.
+export async function deleteSighting(id) {
+  await load()
+  _db.sightings = _db.sightings.filter((s) => String(s._id) !== String(id))
+
+  const cycle = _db.cycles.find((c) => c.bleedings.some((b) => String(b) === String(id)))
+  if (cycle) {
+    cycle.bleedings = cycle.bleedings.filter((b) => String(b) !== String(id))
+    if (!cycle.bleedings.length) {
+      _db.cycles = _db.cycles.filter((c2) => c2._id !== cycle._id)
+    }
+  }
+
+  await save()
+  return { ok: true }
+}
+
 export async function getCycle() {
   await load()
   return serialize(currentCycleRaw())

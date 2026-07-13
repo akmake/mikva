@@ -6,6 +6,7 @@ import {
   GeoLocation,
   ZmanimFormatter,
   DateTime,
+  HebrewDateFormatter,
 } from 'kosher-zmanim'
 import tzlookup from 'tz-lookup'
 import { useMikvaEngine } from '../lib/useMikvaEngine'
@@ -21,6 +22,8 @@ import {
   shouldAskPregnancy,
 } from './Dashboard'
 import { evaluateCleanDays } from '../lib/cleanDaysEngine'
+import { hebrewDateEquals } from '../lib/hebrewCalendar'
+import { daysUntilHefsekAllowed, currentCleanDayNumber } from '../lib/cycleCalculator'
 
 // ── Hebrew helpers ────────────────────────────────────────────────────────────
 
@@ -103,6 +106,8 @@ function pct(now, a, b) {
   if (!a||!b) return 0
   return Math.min(100,Math.max(0,(now-a)/(b-a)*100))
 }
+
+const DOW_HE = ['','ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת']
 
 // ── Detail panel ──────────────────────────────────────────────────────────────
 
@@ -190,12 +195,23 @@ function TimeCard({ label, tone, active, from, to, progress }) {
   )
 }
 
-function MoonIcon() {
-  return <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z" /></svg>
+function MoonIcon({ className = 'h-3.5 w-3.5' }) {
+  return <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z" /></svg>
 }
 
-function SunIcon() {
-  return <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
+function SunIcon({ className = 'h-3.5 w-3.5' }) {
+  return <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
+}
+
+// שם החג/המועד של יום עברי נתון (ריק אם יום חול רגיל); שבת קודש נבדקת בנפרד
+// כי getDayOfWeek אינו Yom Tov. חשוב לזיהוי ימים שבהם זמני/הלכות הבדיקה שונים.
+function holidayLabel(jCal) {
+  const hdf = new HebrewDateFormatter()
+  hdf.setHebrewFormat(true)
+  let label = hdf.formatYomTov(jCal)
+  if (!label && jCal.isRoshChodesh()) label = hdf.formatRoshChodesh(jCal)
+  if (!label && jCal.getDayOfWeek() === 7) label = 'שבת קודש'
+  return label || null
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -240,6 +256,33 @@ export default function HebrewCalendarPage() {
   const sheetCleanState = useMemo(() => evaluateCleanDays(sheetCycle?.cleanDays ?? []), [sheetCycle])
   const sheetPhase      = sheetCycle ? effectivePhaseFor(sheetCycle) : effectivePhase
 
+  // ── רמזור סטטוס — אדום (אסורה) / כתום (חשש) / ירוק (טהורה ומותרת) ──
+  const todayHD = useMemo(() => ({ year: todayYear, month: todayMonth, day: todayDay }), [todayYear, todayMonth, todayDay])
+  const todayConcerns = useMemo(
+    () => vesetConcerns.filter(c => hebrewDateEquals(c.hebrewDate, todayHD) && !c.uprooted),
+    [vesetConcerns, todayHD],
+  )
+  const statusLevel = effectivePhase !== 'tahorah' ? 'red' : (todayConcerns.length > 0 ? 'orange' : 'green')
+  const STATUS_CFG = {
+    red:    { color: '#dc2626', ring: 'rgba(220,38,38,0.15)' },
+    orange: { color: '#f97316', ring: 'rgba(249,115,22,0.15)' },
+    green:  { color: '#16a34a', ring: 'rgba(22,163,74,0.15)' },
+  }
+  const statusCfg = STATUS_CFG[statusLevel]
+
+  const todayCountdown = useMemo(() => {
+    if (effectivePhase === 'waiting_5_days' && cycle?.latestSighting) {
+      const d = daysUntilHefsekAllowed(cycle.latestSighting.hebrewDate)
+      return { n: d }
+    }
+    if (effectivePhase === 'counting_7' && cycle?.hefsekTahara) {
+      const n = currentCleanDayNumber(cycle.hefsekTahara.hebrewDate)
+      if (n == null) return null
+      return { n: Math.max(0, 7 - n) }
+    }
+    return null
+  }, [effectivePhase, cycle])
+
   // current period for today (to colour the cells)
   const todayPeriods = useMemo(() => {
     if (!location) return null
@@ -261,6 +304,13 @@ export default function HebrewCalendarPage() {
     if (dayStart && dayEnd && now>=dayStart && now<dayEnd) return 'day'
     return null
   }, [todayPeriods, now])
+
+  // כמה אחוז חלפו מהעונה הנוכחית (יום/לילה) — ל"קו זמן" בתא של היום בלוח.
+  const currentProgressPct = useMemo(() => {
+    if (!todayPeriods || !currentPeriod) return null
+    const {nightStart,dayStart,dayEnd} = todayPeriods
+    return currentPeriod === 'night' ? pct(now,nightStart,dayStart) : pct(now,dayStart,dayEnd)
+  }, [todayPeriods, currentPeriod, now])
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -296,16 +346,19 @@ export default function HebrewCalendarPage() {
   const isTodayDay   = d => isToday(d) && currentPeriod==='day'
 
   const todayLabel = `${DAY_LETTERS[todayDay]} ${MONTH_NAMES[todayMonth]} ${toHebrewYear(todayYear)}`
+  const todayHoliday = useMemo(() => holidayLabel(todayCal), [todayCal])
   const isCurrentMonth = dispMonth===todayMonth && dispYear===todayYear
 
   return (
-    <main className="min-h-screen bg-[#f6f5f1] text-stone-900" dir="rtl">
+    <main className="min-h-screen text-stone-900" dir="rtl">
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 sm:py-12">
         <header className="mb-8 flex items-end justify-between border-b border-stone-300 pb-6">
           <div>
             <p className="mb-2 text-xs font-semibold tracking-[0.18em] text-teal-800">לוח עברי</p>
             <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">{todayLabel}</h1>
-            <p className="mt-2 text-sm text-stone-500">התאריך העברי, זמני היום ומעקב הטהרה — במקום אחד.</p>
+            <p className={`mt-2 text-sm font-semibold ${todayHoliday ? 'text-amber-700' : 'text-stone-400'}`}>
+              {todayHoliday ?? 'יום חול'}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -319,15 +372,35 @@ export default function HebrewCalendarPage() {
           </div>
         </header>
 
-        {/* Phase strip — current halachic status */}
+        {/* ── רמזור סטטוס — רצועה אופקית קומפקטית, לא מורידה את הלוח למטה ── */}
         {dataLoaded && (
-          <div className={`mb-6 flex items-center justify-center gap-2 border px-4 py-2.5 ${phaseCfg.bg} ${phaseCfg.border}`}>
-            <span className={`text-sm font-semibold ${phaseCfg.text}`}>{phaseCfg.label}</span>
-            {phaseDetail && <span className={`text-sm opacity-60 ${phaseCfg.text}`}>· {phaseDetail}</span>}
+          <div className="mb-4 flex items-center gap-4 rounded-2xl border border-white/60 bg-white/85 px-5 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.05)] backdrop-blur-sm">
+            <div
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white"
+              style={{ backgroundColor: statusCfg.color, boxShadow: `0 0 0 6px ${statusCfg.ring}` }}
+            >
+              {statusLevel === 'red' ? '✕' : statusLevel === 'orange' ? '!' : '✓'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-stone-600">
+                {phaseCfg.label}{phaseDetail ? ` · ${phaseDetail}` : ''}
+              </p>
+              {todayConcerns.length > 0 && (
+                <p className="truncate text-xs font-semibold text-orange-600">
+                  חשש {todayConcerns[0].label}{todayConcerns.length > 1 ? ` (+${todayConcerns.length - 1})` : ''}
+                </p>
+              )}
+            </div>
+            {todayCountdown && (
+              <div className="flex shrink-0 items-baseline gap-1.5 border-r border-stone-200 pr-4">
+                <span className="text-3xl font-bold leading-none text-stone-900 tabular-nums">{todayCountdown.n}</span>
+                <span className="text-xs font-medium text-stone-500">{todayCountdown.n === 1 ? 'יום' : 'ימים'}</span>
+              </div>
+            )}
           </div>
         )}
 
-        <div className="grid overflow-hidden border border-stone-300 bg-white shadow-[0_18px_60px_rgba(41,37,36,0.07)] lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid overflow-hidden rounded-[20px] border border-white/60 bg-white/85 shadow-[0_10px_30px_rgba(0,0,0,0.05)] backdrop-blur-sm lg:grid-cols-[minmax(0,1fr)_320px]">
           <section className="p-4 sm:p-7 lg:p-9">
           <div className="flex items-center justify-between pb-5">
             <button
@@ -358,7 +431,7 @@ export default function HebrewCalendarPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7 gap-1.5">
             {cells.map((day, i) => {
               if (!day) return <div key={i} className="aspect-square" />
 
@@ -370,12 +443,14 @@ export default function HebrewCalendarPage() {
               const isShabbat = (i % 7) === 6
 
               // Halachic status colours (night and day are split evenly) — same
-              // engine the "/" dashboard uses.
+              // engine the "/" dashboard uses. On ordinary days (no status) we
+              // still tint night vs day distinctly, so the split reads at a glance.
               const colors = dataLoaded
                 ? getCellColors(hd, sightings, cycles, vesetMap)
                 : null
-              const nightColor    = colors?.nightColor ?? 'bg-transparent'
-              const dayColor      = colors?.dayColor   ?? 'bg-transparent'
+              const isNormal    = !colors || colors.type === 'normal'
+              const nightColor  = isNormal ? 'bg-indigo-100' : (colors?.nightColor ?? 'bg-transparent')
+              const dayColor    = isNormal ? 'bg-amber-50'   : (colors?.dayColor   ?? 'bg-transparent')
               const hasConcern    = (colors?.nightConcerns?.length ?? 0) > 0
                                  || (colors?.dayConcerns?.length   ?? 0) > 0
               const hasPassed     = !hasConcern && (
@@ -387,16 +462,37 @@ export default function HebrewCalendarPage() {
                   key={i}
                   onClick={() => { setSel(hd); setSheetHd(hd) }}
                   aria-label={`${DAY_LETTERS[day]} ${monthName}`}
-                  className={`group relative flex aspect-square items-center justify-center rounded-xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-700 ${
-                    selected ? 'ring-2 ring-inset ring-teal-800 z-10'
-                    : 'hover:bg-stone-50'
+                  className={`group relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-700 ${
+                    selected ? 'border-teal-800 ring-2 ring-inset ring-teal-800 z-10'
+                    : today  ? 'border-teal-600'
+                    : 'border-stone-300 hover:border-stone-400'
                   }`}
                 >
                   {/* status background — night | day split */}
-                  <span className={`absolute inset-1 flex overflow-hidden rounded-lg shadow-[inset_0_0_0_1px_rgba(120,113,108,0.08)] ${isShabbat ? 'bg-teal-50/60' : 'bg-white'}`}>
-                    <span className={`w-1/2 ${nightColor}`} />
-                    <span className={`w-1/2 ${dayColor}`} />
+                  <span className="absolute inset-0 flex">
+                    <span className={`relative w-1/2 ${nightColor}`}>
+                      <MoonIcon className="absolute top-1 left-1/2 h-2.5 w-2.5 -translate-x-1/2 text-indigo-500/60" />
+                      {today && currentPeriod === 'night' && currentProgressPct != null && (
+                        <span
+                          className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-teal-700"
+                          style={{ left: `${currentProgressPct}%` }}
+                          title="המיקום הנוכחי בעונת הלילה"
+                        />
+                      )}
+                    </span>
+                    <span className={`relative w-1/2 ${dayColor}`}>
+                      <SunIcon className="absolute top-1 left-1/2 h-2.5 w-2.5 -translate-x-1/2 text-amber-600/60" />
+                      {today && currentPeriod === 'day' && currentProgressPct != null && (
+                        <span
+                          className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-teal-700"
+                          style={{ left: `${currentProgressPct}%` }}
+                          title="המיקום הנוכחי בעונת היום"
+                        />
+                      )}
+                    </span>
                   </span>
+                  {/* night | day divider */}
+                  <span className="absolute inset-y-0 right-1/2 w-px bg-stone-300/70" />
 
                   <span className={`relative flex h-8 min-w-8 items-center justify-center rounded-full px-1 text-sm leading-none transition sm:text-base ${
                     colors?.dayText ?? (isShabbat ? 'text-teal-700' : 'text-stone-700')

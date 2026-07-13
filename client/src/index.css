@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* רקע בז' יוקרתי — מרוקם בעדינות מאחורי הכרטיסים השקופים למחצה */
+body {
+  min-height: 100vh;
+  background-color: #e8dfc8;
+  background-image:
+    radial-gradient(ellipse 80% 60% at 15% 0%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(ellipse 60% 50% at 100% 20%, rgba(13, 148, 136, 0.06), transparent),
+    linear-gradient(135deg, rgba(237, 227, 202, 0.95), rgba(222, 208, 178, 0.9));
+  background-attachment: fixed;
+  font-family: 'Rubik', sans-serif;
+}

@@ -39,6 +39,7 @@ export const api = {
   // ── sightings ──────────────────────────────────────────────────────────
   getSightings: () => store.getSightings(),
   recordSighting: (payload) => store.recordSighting(payload),
+  deleteSighting: (id) => store.deleteSighting(id),
 
   // ── cycle ──────────────────────────────────────────────────────────────
   getCycle: () => store.getCycle(),

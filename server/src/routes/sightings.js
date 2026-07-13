@@ -87,4 +87,25 @@ router.post('/', async (req, res) => {
   }
 })
 
+// DELETE /api/sightings/:id — מחיקת ראייה שגויה. מסירה אותה מהנידה שמכילה
+// אותה; נידה שנשארה בלי ראיות כלל נמחקת. שאר שדות הנידה (הפסק/7 נקיים/טבילה)
+// אינם מחושבים מחדש — זו פעולת "בטל רישום" ולא Recompute הלכתי מלא.
+router.delete('/:id', async (req, res) => {
+  try {
+    const sighting = await Sighting.findByIdAndDelete(req.params.id)
+    if (!sighting) return res.status(404).json({ error: 'sighting not found' })
+
+    const cycle = await Cycle.findOne({ bleedings: sighting._id })
+    if (cycle) {
+      cycle.bleedings = cycle.bleedings.filter((b) => String(b) !== String(sighting._id))
+      if (!cycle.bleedings.length) await Cycle.deleteOne({ _id: cycle._id })
+      else await cycle.save()
+    }
+
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
 export default router

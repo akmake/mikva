@@ -1,8 +1,11 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
 import express from 'express'
 import cors from 'cors'
 import mongoose from 'mongoose'
+import { fileURLToPath } from 'url'
 import apiRoutes from './routes/index.js'
+
+dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
 const app = express()
 const PORT = process.env.PORT || 5000
