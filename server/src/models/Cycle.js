@@ -38,6 +38,9 @@ const cycleSchema = new mongoose.Schema(
       planned: hebrewDateSchema,
       actual:  Date,
     },
+    // חפיפה — סימוני ההכנות לטבילה (מקורות/יח-יט), אובייקט { itemKey: boolean }.
+    // תיעוד בלבד; אינו שער הלכתי לפעולת הטבילה עצמה.
+    chafifaChecklist: { type: mongoose.Schema.Types.Mixed, default: {} },
     status: { type: String, enum: ['active', 'completed'], default: 'active' },
   },
   { timestamps: true },

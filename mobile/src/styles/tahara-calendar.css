@@ -1,0 +1,114 @@
+/* מסך לוח השנה (טהרה) — מבוסס על הטוקנים מחבילת העיצוב (calendar-theme.css), מוגבל ל-.tahara-calendar */
+.tahara-calendar {
+  --tc-bg: #fbf6f3;
+  --tc-surface: #fffdfb;
+  --tc-plum: #54223c;
+  --tc-text: #322b30;
+  --tc-muted: #82757d;
+  --tc-rose: #f8e2e8;
+  --tc-rose-strong: #bb4770;
+  --tc-sage: #e2f1e6;
+  --tc-sage-strong: #327955;
+  --tc-gold: #d7a75e;
+  --tc-border: #eadce0;
+  --tc-shadow: 0 6px 22px rgba(79, 34, 55, .06);
+  position: relative;
+  min-height: 100dvh;
+  color: var(--tc-text);
+  direction: rtl;
+  font-family: 'Heebo', 'Assistant', system-ui, sans-serif;
+  background: radial-gradient(circle at 80% 2%, #f9e9e8 0, transparent 40%), var(--tc-bg);
+}
+.tahara-calendar .tc-shell { width: min(100%, 520px); margin: 0 auto; padding: calc(env(safe-area-inset-top) + 12px) 14px calc(112px + env(safe-area-inset-bottom)); }
+.tahara-calendar .tc-card { background: var(--tc-surface); border: 1px solid var(--tc-border); border-radius: 22px; box-shadow: var(--tc-shadow); }
+
+/* כותרת */
+.tahara-calendar .tc-top { position: relative; text-align: center; min-height: 112px; }
+.tahara-calendar .tc-top .lotus { display: block; margin: 0 auto; }
+.tahara-calendar .tc-top h1 { margin-top: 2px; font-family: 'Frank Ruhl Libre', serif; font-size: 38px; font-weight: 700; line-height: 1.05; color: var(--tc-plum); }
+.tahara-calendar .tc-top .years { margin-top: 4px; font-size: 14px; color: var(--tc-muted); font-variant-numeric: tabular-nums; }
+.tahara-calendar .tc-top .tc-icon-button { position: absolute; inset-inline-start: 0; top: 2px; border-radius: 50%; width: 46px; height: 46px; box-shadow: 0 6px 16px #4f223714; }
+
+.tahara-calendar .tc-icon-button { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--tc-border); border-radius: 14px; background: var(--tc-surface); color: var(--tc-rose-strong); cursor: pointer; }
+.tahara-calendar button:focus-visible { outline: 3px solid var(--tc-gold); outline-offset: 2px; }
+
+/* ניווט חודשים */
+.tahara-calendar .tc-month-nav { display: grid; grid-template-columns: 1fr 1.5fr 1fr; align-items: stretch; gap: 8px; margin-top: 12px; }
+.tahara-calendar .tc-step { display: flex; align-items: center; gap: 6px; min-height: 58px; padding: 6px; border-radius: 999px; background: var(--tc-surface); border: 1px solid var(--tc-border); box-shadow: var(--tc-shadow); color: var(--tc-plum); font-size: 13px; font-weight: 600; }
+.tahara-calendar .tc-step .chev { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--tc-rose); color: var(--tc-rose-strong); }
+.tahara-calendar .tc-step span.txt { flex: 1; text-align: center; line-height: 1.15; }
+.tahara-calendar .tc-month-pill { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 58px; padding: 6px 10px; border-radius: 999px; background: var(--tc-surface); border: 1px solid var(--tc-border); box-shadow: var(--tc-shadow); text-align: center; }
+.tahara-calendar .tc-month-pill strong { font-family: 'Frank Ruhl Libre', serif; font-size: 21px; font-weight: 700; line-height: 1.1; color: var(--tc-plum); }
+.tahara-calendar .tc-month-pill small { margin-top: 2px; font-size: 12px; color: var(--tc-muted); }
+
+/* שורת מצב ו"היום" */
+.tahara-calendar .tc-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.tahara-calendar .tc-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 999px; background: var(--tc-surface); border: 1px solid var(--tc-border); font-size: 13px; color: var(--tc-muted); }
+.tahara-calendar .tc-chip b { color: var(--tc-plum); }
+.tahara-calendar .tc-chip.action { cursor: pointer; background: var(--tc-rose); border-color: transparent; color: var(--tc-plum); font-weight: 700; }
+.tahara-calendar .tc-chip.action:disabled { opacity: .55; cursor: default; }
+
+/* לוח */
+.tahara-calendar .tc-board { margin-top: 10px; padding: 8px; }
+.tahara-calendar .tc-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; margin-bottom: 4px; background: #fbeef0; border-radius: 14px; padding: 4px 0; }
+.tahara-calendar .tc-weekdays div { text-align: center; font-size: 12px; font-weight: 700; color: var(--tc-muted); padding: 5px 0; }
+.tahara-calendar .tc-weekdays div:last-child { color: var(--tc-rose-strong); }
+.tahara-calendar .tc-grid { display: grid; gap: 3px; }
+.tahara-calendar .tc-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.tahara-calendar .tc-day {
+  position: relative; min-width: 0; min-height: 66px; padding: 0; border: 2px solid transparent; border-radius: 12px; overflow: hidden;
+  background: var(--tc-surface); text-align: center; color: var(--tc-plum); cursor: pointer;
+}
+.tahara-calendar .tc-day.blank { background: transparent; cursor: default; }
+.tahara-calendar .tc-day .halves { position: absolute; inset: 0; display: flex; direction: rtl; }
+.tahara-calendar .tc-day .halves > span { position: relative; width: 50%; }
+.tahara-calendar .tc-day .halves svg { position: absolute; left: 0; right: 0; bottom: 5px; margin: auto; opacity: .55; }
+.tahara-calendar .tc-hebrew-date { position: absolute; inset-inline: 0; top: 13px; font-family: 'Frank Ruhl Libre', serif; font-weight: 700; font-size: 19px; line-height: 1.1; }
+.tahara-calendar .tc-gregorian-date { position: absolute; inset-inline: 0; top: 35px; font-size: 11px; font-weight: 500; line-height: 1; opacity: .75; font-variant-numeric: tabular-nums; }
+.tahara-calendar .tc-day .mark { position: absolute; inset-inline-end: 3px; top: 3px; width: 14px; height: 14px; display: grid; place-items: center; border-radius: 50%; background: #fffdfb; color: var(--tc-plum); }
+.tahara-calendar .tc-day .mark.dot { width: 9px; height: 9px; inset-inline-end: 4px; top: 4px; box-shadow: 0 0 0 1.5px #fffdfb; }
+.tahara-calendar .tc-day .late { position: absolute; inset-inline-start: 3px; bottom: 3px; width: 9px; height: 9px; border-radius: 50%; background: #a9303a; box-shadow: 0 0 0 1.5px #fffdfb; }
+.tahara-calendar .tc-day.is-today { box-shadow: inset 0 0 0 2px var(--tc-gold); }
+.tahara-calendar .tc-day[aria-selected='true'] { z-index: 2; border-color: var(--tc-rose-strong); box-shadow: inset 0 0 0 2px #fff, 0 6px 14px rgba(187, 71, 112, .28); }
+.tahara-calendar .tc-day[aria-selected='true'].is-today { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px var(--tc-gold), 0 6px 14px rgba(187, 71, 112, .28); }
+.tahara-calendar .needle { position: absolute; top: 0; bottom: 0; width: 2px; }
+
+/* מקרא */
+.tahara-calendar .tc-legend { margin-top: 12px; padding: 14px 10px 12px; }
+.tahara-calendar .tc-legend h3 { margin: 0 6px 12px; font-size: 13px; font-weight: 700; color: var(--tc-rose-strong); letter-spacing: .04em; }
+.tahara-calendar .tc-legend-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 4px; }
+.tahara-calendar .tc-legend-item { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; font-size: 12px; line-height: 1.2; color: var(--tc-text); }
+.tahara-calendar .tc-swatch { position: relative; width: 38px; height: 26px; border-radius: 9px; overflow: hidden; display: flex; direction: rtl; border: 1px solid #e6d6da; }
+.tahara-calendar .tc-swatch > span { flex: 1; }
+.tahara-calendar .tc-swatch svg { position: absolute; inset: 0; margin: auto; color: var(--tc-plum); }
+.tahara-calendar .tc-legend-note { margin: 12px 6px 0; font-size: 12px; line-height: 1.55; color: var(--tc-muted); }
+
+/* פרטי היום הנבחר */
+.tahara-calendar .tc-details { margin-top: 12px; padding: 16px; }
+.tahara-calendar .tc-details .kicker { font-size: 13px; font-weight: 700; color: var(--tc-rose-strong); }
+.tahara-calendar .tc-details h3 { margin: 4px 0 0; font-family: 'Frank Ruhl Libre', serif; font-size: 24px; font-weight: 700; line-height: 1.1; color: var(--tc-plum); }
+.tahara-calendar .tc-details .dates { margin-top: 4px; font-size: 14px; color: var(--tc-muted); font-variant-numeric: tabular-nums; }
+.tahara-calendar .tc-status { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px; border-radius: 16px; background: var(--tc-sage); }
+.tahara-calendar .tc-status .ico { flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: var(--tc-sage-strong); }
+.tahara-calendar .tc-status strong { display: block; font-size: 16px; color: var(--tc-plum); }
+.tahara-calendar .tc-status small { display: block; margin-top: 2px; font-size: 13px; color: var(--tc-muted); }
+.tahara-calendar .tc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tahara-calendar .tc-tag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--tc-rose); color: var(--tc-plum); }
+.tahara-calendar .tc-open { width: 100%; min-height: 50px; margin-top: 12px; border: 1px solid var(--tc-border); border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--tc-surface); color: var(--tc-plum); font-weight: 700; font-size: 15px; }
+
+@media (min-width: 700px) {
+  .tahara-calendar .tc-day { min-height: 76px; }
+  .tahara-calendar .tc-hebrew-date { font-size: 21px; top: 10px; }
+  .tahara-calendar .tc-gregorian-date { top: 36px; font-size: 12px; }
+}
+@media (max-width: 360px) {
+  .tahara-calendar .tc-day { min-height: 60px; }
+  .tahara-calendar .tc-hebrew-date { font-size: 16px; top: 12px; }
+  .tahara-calendar .tc-gregorian-date { top: 31px; font-size: 10px; }
+  .tahara-calendar .tc-step .txt { display: none; }
+  .tahara-calendar .tc-month-nav { grid-template-columns: auto 1fr auto; }
+  .tahara-calendar .tc-legend-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tahara-calendar *, .tahara-calendar *::before, .tahara-calendar *::after { animation: none !important; transition: none !important; }
+}

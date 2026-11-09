@@ -1,0 +1,124 @@
+/* עיצוב מסך הבית (טהרה) — מוגבל ל-.tahara-home. הסרגל התחתון משותף לכל המסכים ולכן מוגדר בנפרד. */
+.tahara-home {
+  --th-bg: #fcf7f4;
+  --th-paper: #fffdfb;
+  --th-plum: #55213b;
+  --th-rose: #ad3659;
+  --th-rose-soft: #f7e2e9;
+  --th-gold: #c9a16c;
+  --th-ink: #342b37;
+  --th-muted: #806e7b;
+  --th-night: #30203f;
+  --th-sage: #4d866d;
+  --th-line: #f0e5e5;
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  font-family: 'Heebo', 'Assistant', sans-serif;
+  direction: rtl;
+  color: var(--th-ink);
+  background: radial-gradient(circle at 20% 8%, #f9e9e8 0, transparent 40%), var(--th-bg);
+  min-height: 100dvh;
+}
+.tahara-home .home-art { position: absolute; inset: 0 0 auto 0; height: 760px; z-index: -1; pointer-events: none; }
+.tahara-home .home-shell { width: min(100%, 480px); margin: 0 auto; padding: calc(env(safe-area-inset-top) + 18px) 18px calc(112px + env(safe-area-inset-bottom)); }
+
+.tahara-home .home-top { position: absolute; inset-inline: 18px; top: calc(env(safe-area-inset-top) + 14px); display: flex; align-items: center; justify-content: space-between; z-index: 2; }
+.tahara-home .round-btn {
+  width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--th-paper); color: var(--th-rose); border: 1px solid var(--th-line);
+  box-shadow: 0 6px 16px #4e213a14;
+}
+.tahara-home .home-blessing { font-size: 15px; color: var(--th-rose); font-weight: 500; }
+
+.tahara-home .home-brand { text-align: center; }
+.tahara-home .home-brand svg.lotus { display: block; margin: 0 auto 2px; }
+.tahara-home .home-brand h1 {
+  font-family: 'Frank Ruhl Libre', serif; font-size: 52px; font-weight: 700; line-height: 1;
+  color: var(--th-plum); letter-spacing: -0.02em;
+}
+.tahara-home .home-brand .tagline { margin-top: 5px; font-size: 13.5px; color: var(--th-muted); letter-spacing: .04em; }
+.tahara-home .gold-rule { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 9px auto 0; width: 60%; color: var(--th-gold); }
+.tahara-home .gold-rule::before, .tahara-home .gold-rule::after { content: ''; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--th-gold)); }
+.tahara-home .gold-rule::after { transform: scaleX(-1); }
+
+.tahara-home .home-date { text-align: center; margin: 10px 0 0; color: var(--th-muted); font-size: 14px; }
+.tahara-home .home-date strong { display: block; font-size: 19px; font-weight: 600; color: var(--th-plum); margin-bottom: 3px; }
+.tahara-home .home-clock { margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.tahara-home .home-clock time { direction: ltr; font-size: 38px; font-weight: 400; line-height: 1; color: var(--th-plum); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.tahara-home .home-clock time small { font-size: 18px; color: var(--th-muted); margin-inline-start: 6px; }
+.tahara-home .holiday-chip { border: 1px solid var(--th-line); background: var(--th-paper); color: var(--th-muted); font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px; }
+.tahara-home .holiday-chip[data-holiday='true'] { border-color: #e6cfa6; background: #fbf3e4; color: #7c5a1f; }
+
+/* ── כרטיס סטטוס: טבעת דקה + ענף זהב ── */
+.tahara-home .status-card { position: relative; margin: 24px auto 0; width: 244px; height: 214px; display: grid; place-items: center; }
+.tahara-home .status-card .sprig { position: absolute; left: -52px; top: 26px; pointer-events: none; }
+.tahara-home .status-ring { position: relative; width: 208px; height: 208px; border-radius: 50%; background: radial-gradient(circle at 50% 30%, #fff 0, var(--th-paper) 70%); box-shadow: 0 14px 38px #4e213a14, inset 0 0 0 1px #f3e8e8; }
+.tahara-home .status-ring svg.status-arcs { position: absolute; inset: 0; }
+.tahara-home .status-badge { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; border: 3px solid #fffdfb; box-shadow: 0 6px 14px #4e213a30; }
+.tahara-home .status-body { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 24px; }
+.tahara-home .status-body .kicker { font-size: 12.5px; color: var(--th-muted); }
+.tahara-home .status-body strong { font-family: 'Frank Ruhl Libre', serif; font-size: 30px; font-weight: 700; line-height: 1.05; color: var(--th-plum); margin-top: 2px; }
+.tahara-home .status-body .count { margin-top: 5px; color: var(--th-rose); font-family: 'Frank Ruhl Libre', serif; line-height: 1; }
+.tahara-home .status-body .count b { font-size: 40px; font-weight: 700; }
+.tahara-home .status-body .count span { font-size: 15px; color: var(--th-muted); margin-inline-start: 6px; font-family: 'Heebo', sans-serif; }
+.tahara-home .status-body .note { margin-top: 5px; font-size: 12px; line-height: 1.25; color: var(--th-muted); }
+
+/* ── יום/לילה ── */
+.tahara-home .daynight-card { margin-top: 18px; border-radius: 20px; box-shadow: 0 8px 24px #4e213a12; }
+
+/* ── כפתור ראשי ── */
+.tahara-home .primary-action {
+  width: 100%; min-height: 56px; margin-top: 16px; border: 0; border-radius: 20px;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: linear-gradient(115deg, #7d2947, #b6385d); color: #fff;
+  font-size: 17px; font-weight: 700; box-shadow: 0 10px 22px #922d4a26;
+}
+
+/* ── כרטיסי משימות והתראות ── */
+.tahara-home .section-title { display: flex; justify-content: space-between; align-items: baseline; margin: 26px 4px 10px; font-size: 13px; font-weight: 700; color: var(--th-rose); letter-spacing: .04em; }
+.tahara-home .section-title span { color: var(--th-muted); font-weight: 500; }
+.tahara-home .task-card { background: var(--th-paper); border: 1px solid var(--th-line); border-radius: 24px; padding: 4px 16px; box-shadow: 0 8px 24px #4e213a0d; }
+.tahara-home .task-row { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--th-line); }
+.tahara-home .task-row:last-child { border-bottom: 0; }
+.tahara-home .task-icon { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; flex: none; border: 1px solid #ead9de; color: #b79aa8; background: #fff; }
+.tahara-home .task-icon[data-state='open'] { border-color: var(--th-rose); background: var(--th-rose-soft); color: var(--th-rose); }
+.tahara-home .task-icon[data-state='done'] { border-color: var(--th-sage); background: var(--th-sage); color: #fff; }
+.tahara-home .task-icon[data-state='missed'] { border-color: #b3303c; color: #b3303c; background: #fff; }
+.tahara-home .task-title { font-size: 17px; font-weight: 600; color: var(--th-plum); line-height: 1.15; }
+.tahara-home .task-sub { margin-top: 3px; font-size: 13px; color: var(--th-muted); font-variant-numeric: tabular-nums; }
+.tahara-home .mini-action { min-height: 44px; padding: 0 20px; border-radius: 16px; background: var(--th-sage); color: #fff; font-weight: 700; font-size: 14px; }
+.tahara-home .wide-action { width: 100%; min-height: 52px; border-radius: 18px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 16px; color: #fff; }
+.tahara-home .wide-action[data-tone='hefsek'] { background: #c9a16c; color: #3f2b08; }
+.tahara-home .wide-action[data-tone='mikveh'] { background: linear-gradient(115deg, #2f5287, #4a76b0); }
+.tahara-home .wide-action:disabled, .tahara-home .mini-action:disabled { opacity: .45; }
+.tahara-home .hint { border: 1px dashed #e4d2d8; border-radius: 16px; padding: 14px; text-align: center; font-size: 14px; color: var(--th-muted); }
+.tahara-home .fine { margin-top: 8px; text-align: center; font-size: 12px; color: var(--th-muted); }
+.tahara-home .alert-row { display: flex; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--th-line); }
+.tahara-home .alert-row:last-child { border-bottom: 0; }
+.tahara-home .alert-row i { width: 3px; border-radius: 3px; flex: none; }
+.tahara-home .error-box { margin-top: 12px; border: 1px solid #ecc3cc; background: #fbe9ed; color: #8a2740; border-radius: 16px; padding: 10px 14px; font-size: 13px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .tahara-home button, .tahara-nav a, .tahara-nav button { transition: background .18s ease, transform .18s ease, color .18s ease; }
+  .tahara-home button:active, .tahara-nav a:active, .tahara-nav button:active { transform: scale(.98); }
+}
+@media (max-width: 360px) {
+  .tahara-home .home-brand h1 { font-size: 54px; }
+  .tahara-home .home-clock time { font-size: 38px; }
+}
+
+/* ── סרגל ניווט תחתון (משותף) ── */
+.tahara-nav {
+  position: fixed; z-index: 40; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+  width: min(calc(100% - 24px), 456px); display: flex; justify-content: space-around; gap: 4px; padding: 8px; direction: rtl;
+  background: #fffdfbef; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  border: 1px solid #eadce0; border-radius: 999px; box-shadow: 0 8px 26px #4f223720;
+}
+.tahara-nav a, .tahara-nav button {
+  flex: 1; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border-radius: 999px; color: #806e7b; font-size: 12px; font-weight: 500;
+}
+.tahara-nav a[aria-current='page'] { background: #f8e2e8; color: #54223c; font-weight: 700; }
+.tahara-nav a:focus-visible, .tahara-nav button:focus-visible { outline: 3px solid #d7a75e; outline-offset: 2px; }
+

@@ -292,25 +292,37 @@ export default function HebrewCalendarPage() {
     const gd = c.getDate()
     const dt   = DateTime.fromObject({year:gd.year,month:gd.month,day:gd.day,hour:12},{zone:tz})
     const prev = dt.minus({days:1})
+    const next = dt.plus({days:1})
     const todayZ = getZmanim(dt.year,dt.month,dt.day,lat,lng,tz)
     const prevZ  = getZmanim(prev.year,prev.month,prev.day,lat,lng,tz)
-    return { nightStart:prevZ.sunset, dayStart:todayZ.sunrise, dayEnd:todayZ.sunset }
+    const nextZ  = getZmanim(next.year,next.month,next.day,lat,lng,tz)
+    return { dayStart:todayZ.sunrise, dayEnd:todayZ.sunset, prevNightStart:prevZ.sunset, nextNightEnd:nextZ.sunrise }
   }, [location, todayYear, todayMonth, todayDay])
 
-  const currentPeriod = useMemo(() => {
+  // חלון הלילה הרלוונטי לרגע זה — "אתמול בלילה" אם עדיין לפני הזריחה, אחרת
+  // "הלילה" (מהשקיעה של היום ועד הזריחה הבאה). כך הקו תמיד יודע איפה אנחנו,
+  // גם אחרי השקיעה (שאז "היום" ההלכתי הבא כבר התחיל).
+  const nightWindow = useMemo(() => {
     if (!todayPeriods) return null
-    const {nightStart,dayStart,dayEnd} = todayPeriods
-    if (nightStart && dayStart && now>=nightStart && now<dayStart) return 'night'
+    const { dayStart, prevNightStart, nextNightEnd, dayEnd } = todayPeriods
+    if (dayStart && now < dayStart) return { start: prevNightStart, end: dayStart }
+    return { start: dayEnd, end: nextNightEnd }
+  }, [todayPeriods, now])
+
+  const currentPeriod = useMemo(() => {
+    if (!todayPeriods || !nightWindow) return null
+    const { dayStart, dayEnd } = todayPeriods
+    if (nightWindow.start && nightWindow.end && now>=nightWindow.start && now<nightWindow.end) return 'night'
     if (dayStart && dayEnd && now>=dayStart && now<dayEnd) return 'day'
     return null
-  }, [todayPeriods, now])
+  }, [todayPeriods, nightWindow, now])
 
   // כמה אחוז חלפו מהעונה הנוכחית (יום/לילה) — ל"קו זמן" בתא של היום בלוח.
   const currentProgressPct = useMemo(() => {
-    if (!todayPeriods || !currentPeriod) return null
-    const {nightStart,dayStart,dayEnd} = todayPeriods
-    return currentPeriod === 'night' ? pct(now,nightStart,dayStart) : pct(now,dayStart,dayEnd)
-  }, [todayPeriods, currentPeriod, now])
+    if (!todayPeriods || !currentPeriod || !nightWindow) return null
+    const { dayStart, dayEnd } = todayPeriods
+    return currentPeriod === 'night' ? pct(now,nightWindow.start,nightWindow.end) : pct(now,dayStart,dayEnd)
+  }, [todayPeriods, currentPeriod, nightWindow, now])
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -509,6 +521,12 @@ export default function HebrewCalendarPage() {
                   {(activeNight || activeDay) && (
                     <span className="absolute bottom-1.5 right-1.5 h-1 w-1 rounded-full bg-gray-500 opacity-60 animate-pulse" />
                   )}
+                  {colors?.mikvehOverdue && (
+                    <span
+                      className="absolute top-1 right-1 h-2 w-2 rounded-full bg-rose-600 shadow-[0_0_0_2px_white]"
+                      title="עברה ליל הטבילה המתוכנן וטרם נרשמה טבילה"
+                    />
+                  )}
                   {today && <span className="absolute right-2 top-2 text-[8px] font-semibold text-teal-800">היום</span>}
                 </button>
               )
@@ -526,8 +544,9 @@ export default function HebrewCalendarPage() {
                 {[
                   { label: 'ראיה',      night: 'bg-rose-500',    day: 'bg-rose-50'     },
                   { label: 'הפסק טהרה', night: 'bg-amber-400',   day: 'bg-amber-300'   },
-                  { label: '7 נקיים',   night: 'bg-emerald-200', day: 'bg-emerald-100' },
+                  { label: '7 נקיים',   night: 'bg-teal-200',    day: 'bg-teal-100'    },
                   { label: 'מקווה',     night: 'bg-blue-200',    day: 'bg-blue-100'    },
+                  { label: 'טהורה',     night: 'bg-emerald-200', day: 'bg-emerald-100' },
                 ].map(({ label, night, day }) => (
                   <div key={label} className="flex items-center gap-2.5">
                     <span className="flex h-4 w-6 overflow-hidden border border-stone-200">
@@ -544,6 +563,10 @@ export default function HebrewCalendarPage() {
                 <div className="flex items-center gap-2.5">
                   <span className="ml-1 inline-block h-2 w-2 rounded-full bg-gray-400" />
                   <span className="text-xs text-stone-500">חשש שעבר</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="ml-1 inline-block h-2 w-2 rounded-full bg-rose-600" />
+                  <span className="text-xs text-stone-500">עברה ליל הטבילה — טרם נרשמה טבילה</span>
                 </div>
               </div>
             </div>

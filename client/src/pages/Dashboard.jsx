@@ -220,27 +220,34 @@ export function getCellColors(hd, sightings, cycles, vesetMap) {
       }
       const isTovel = cleanState?.complete && cleanState.tovelDay === diff
       return {
-        nightColor: isTovel ? 'bg-emerald-400' : 'bg-emerald-200',
-        dayColor:   isTovel ? 'bg-emerald-300' : 'bg-emerald-100',
-        dayText: 'text-emerald-900',
+        nightColor: isTovel ? 'bg-teal-400' : 'bg-teal-200',
+        dayColor:   isTovel ? 'bg-teal-300' : 'bg-teal-100',
+        dayText: 'text-teal-900',
         nightConcerns, dayConcerns, type: isTovel ? 'clean_7' : 'clean', dayNum: diff,
       }
     }
 
-    // ── Mikveh: NIGHT onah only — only once the count actually completed ──
-    if (cleanState?.complete) {
-      const mikvehHD = plannedMikvehDay(hefsekHD, cleanState.tovelDay)
-      if (hebrewDateEquals(mikvehHD, hd)) {
-        const done = !!cycle.mikveDate?.actual
-        return {
-          nightColor: done ? 'bg-blue-500' : 'bg-blue-200',
-          dayColor:   'bg-white', // ← daytime is ordinary; mikveh is AT NIGHT only
-          dayText: 'text-gray-800',
-          nightConcerns, dayConcerns, type: done ? 'mikveh' : 'mikveh_planned', dayNum: null,
-        }
+    // ── ליל הטבילה — מסומן ברגע שיש הפסק טהרה, גם אם 7 הנקיים לא סומנו כ"הושלמו"
+    // באפליקציה (ברירת מחדל: יום 7). NIGHT onah בלבד ──
+    const tovelDay = cleanState?.complete ? cleanState.tovelDay : 7
+    const mikvehHD = plannedMikvehDay(hefsekHD, tovelDay)
+    if (hebrewDateEquals(mikvehHD, hd)) {
+      const done = !!cycle.mikveDate?.actual
+      return {
+        nightColor: done ? 'bg-blue-500' : 'bg-blue-200',
+        dayColor:   'bg-white', // ← daytime is ordinary; mikveh is AT NIGHT only
+        dayText: 'text-gray-800',
+        nightConcerns, dayConcerns, type: done ? 'mikveh' : 'mikveh_planned', dayNum: null,
+        mikvehOverdue: false,
       }
     }
   }
+
+  // ── עברה ליל הטבילה המתוכנן וטרם נרשמה טבילה — נקודה אדומה של אזהרה ──
+  const mikvehOverdue = !!(
+    cycle?.hefsekTahara?.hebrewDate && !cycle?.mikveDate?.actual && cycle.status !== 'completed' &&
+    daysBetween(plannedMikvehDay(cycle.hefsekTahara.hebrewDate, cleanState?.complete ? cleanState.tovelDay : 7), hd) > 0
+  )
 
   // ── חשש ווסת (עתידי/רגיל): צובע את חצי-העונה שבו נופל החשש ברקע כתום רך ──
   if (nightConcerns.length > 0 || dayConcerns.length > 0) {
@@ -248,7 +255,7 @@ export function getCellColors(hd, sightings, cycles, vesetMap) {
       nightColor: nightConcerns.length ? 'bg-orange-200' : (nightPassed.length ? 'bg-gray-200' : 'bg-slate-100'),
       dayColor:   dayConcerns.length   ? 'bg-orange-100' : (dayPassed.length   ? 'bg-gray-100' : 'bg-white'),
       dayText:    dayConcerns.length   ? 'text-orange-900' : 'text-gray-800',
-      nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'concern', dayNum: null,
+      nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'concern', dayNum: null, mikvehOverdue,
     }
   }
 
@@ -258,13 +265,35 @@ export function getCellColors(hd, sightings, cycles, vesetMap) {
       nightColor: nightPassed.length ? 'bg-gray-200' : 'bg-slate-100',
       dayColor:   dayPassed.length   ? 'bg-gray-100' : 'bg-white',
       dayText: 'text-gray-500',
-      nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'concern_passed', dayNum: null,
+      nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'concern_passed', dayNum: null, mikvehOverdue,
     }
   }
 
+  // ── ימי טהרה רגילים (אחרי טבילה בפועל, או שאין נידה שמכסה את היום כלל) ──
+  const isTahorDay = !cycle || !!cycle?.mikveDate?.actual
+  if (isTahorDay) {
+    return { nightColor: 'bg-emerald-200', dayColor: 'bg-emerald-100', dayText: 'text-emerald-900',
+             nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'tahorah', dayNum: null, mikvehOverdue }
+  }
+
   return { nightColor: 'bg-slate-100', dayColor: 'bg-white', dayText: 'text-gray-800',
-           nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'normal', dayNum: null }
+           nightConcerns, dayConcerns, nightPassed, dayPassed, type: 'normal', dayNum: null, mikvehOverdue }
 }
+
+// ── חפיפה — הכנה לטבילה (מקורות/יח,יט — זמן החפיפה ודיני החפיפה) ────────────
+// תיעוד בלבד: רשימת פעולות ההכנה שמוזכרות במקור, לסימון לפני הטבילה.
+export const CHAFIFA_ITEMS = [
+  { key: 'bath',      label: 'רחיצה במים חמים (כולל אזורי השיער)' },
+  { key: 'comb',      label: 'חפיפת/סירוק השיער במסרק' },
+  { key: 'teeth',     label: 'ניקוי שיניים — צחצוח וחוט דנטלי' },
+  { key: 'nails',     label: 'גזיזת וניקוי הציפורניים (ידיים ורגליים)' },
+  { key: 'jewelry',   label: 'הסרת תכשיטים (טבעות, עגילים, צמידים, ריסים תותבים)' },
+  { key: 'earHoles',  label: 'ניקוי חורי העגילים' },
+  { key: 'lenses',    label: 'הסרת עדשות מגע' },
+  { key: 'folds',     label: 'ניקוי בית הקמטים ובית הסתרים' },
+  { key: 'eyesEars',  label: 'ניקוי עיניים, אף ואוזניים' },
+  { key: 'recheck',   label: 'בדיקה חוזרת של הגוף סמוך לטבילה' },
+]
 
 // ── Phase banner config ─────────────────────────────────────────────────────
 
@@ -296,6 +325,45 @@ export function phaseDetailText(cycle, effectivePhase, cleanState) {
     return `מקווה: ליל ${DAY_LETTERS[m.day]} ${MONTH_NAMES[m.month]}`
   }
   return null
+}
+
+// ── חפיפה — צ'קליסט הכנה לטבילה ──────────────────────────────────────────────
+
+export function ChafifaChecklist({ cycle, onRefresh }) {
+  const [busyKey, setBusyKey] = useState(null)
+  const checklist = cycle?.chafifaChecklist ?? {}
+  const doneCount = CHAFIFA_ITEMS.filter(i => checklist[i.key]).length
+
+  async function toggle(key, checked) {
+    setBusyKey(key)
+    try {
+      await api.recordChafifa({ itemKey: key, checked, cycleId: cycle?._id })
+      await onRefresh()
+    } catch (e) { alert(e.message) }
+    finally { setBusyKey(null) }
+  }
+
+  return (
+    <div className="mb-3 rounded-2xl border border-stone-200 bg-white p-4">
+      <p className="mb-2.5 text-sm font-semibold text-stone-700">
+        הכנה לטבילה (חפיפה) <span className="font-normal text-stone-400">· {doneCount}/{CHAFIFA_ITEMS.length}</span>
+      </p>
+      <div className="space-y-2">
+        {CHAFIFA_ITEMS.map(item => (
+          <label key={item.key} className="flex items-center gap-2.5 text-sm text-stone-600">
+            <input
+              type="checkbox"
+              checked={!!checklist[item.key]}
+              disabled={busyKey === item.key}
+              onChange={e => toggle(item.key, e.target.checked)}
+              className="h-4 w-4 shrink-0 rounded border-stone-300 text-teal-700 focus:ring-teal-600"
+            />
+            <span className={checklist[item.key] ? 'text-stone-400 line-through' : ''}>{item.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ── Day detail bottom sheet ─────────────────────────────────────────────────
@@ -362,11 +430,14 @@ export function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetCo
     (phase === 'waiting_hefsek' && !cycle?.hefsekTahara && hefsekDayReached) || isBlocked
   )
   const canRecordBedika   = phase === 'counting_7' && (dayType === 'clean' || dayType === 'clean_7') && !isFuture
-  // רישום טבילה — פעולה עצמאית שרק מתעדת עובדה (שהיא הלכה למקווה), ולא תלויה
-  // בכך שהאפליקציה חישבה/סימנה את 7 הנקיים כמושלמים: יכול להיות שנבדקה כראוי
-  // בלי לסמן כל בדיקה באפליקציה, ובלי מקווה היא אסורה לבעלה גם אם אין דם.
-  const canRecordMikveh   = (phase === 'counting_7' || phase === 'waiting_mikveh')
-    && !!cycle?.hefsekTahara && !cycle?.mikveDate?.actual && !isFuture
+  // רישום טבילה — מותר רק מליל הטבילה המוקדם ואילך (הפסק+8, ברירת מחדל יום 7
+  // גם אם 7 הנקיים לא סומנו כ"הושלמו" באפליקציה — לא תלוי בסימון הבדיקות,
+  // אבל *כן* תלוי בתאריך עצמו: לא כל ימי הווסת, רק מהיום המותר הלכתית).
+  const mikvehEarliestHD  = cycle?.hefsekTahara?.hebrewDate
+    ? plannedMikvehDay(cycle.hefsekTahara.hebrewDate, cleanState?.complete ? cleanState.tovelDay : 7)
+    : null
+  const canRecordMikveh   = !!mikvehEarliestHD && !cycle?.mikveDate?.actual && !isFuture
+    && daysBetween(mikvehEarliestHD, hd) >= 0
   // Can mark a concern day as "passed clean" only if: it's a past concern day, no sighting recorded on it
   const canMarkClean = isPast && thisDayConcerns.length > 0 && daySightings.length === 0
 
@@ -749,10 +820,14 @@ export function DaySheet({ hd, cellColors, cycle, cleanState, sightings, vesetCo
                 </button>
               )}
               {canRecordMikveh && (
-                <button onClick={doMikveh} disabled={loading}
-                  className="w-full flex items-center justify-between bg-blue-500 hover:bg-blue-600 text-white rounded-2xl px-5 py-4 transition font-semibold disabled:opacity-60">
-                  <span>אישור טבילה במקווה</span><span className="text-2xl leading-none">✓</span>
-                </button>
+                <>
+                  <ChafifaChecklist cycle={cycle} onRefresh={onRefresh} />
+                  <button onClick={doMikveh} disabled={loading}
+                    className="w-full flex items-center justify-between bg-blue-500 hover:bg-blue-600 text-white rounded-2xl px-5 py-4 transition font-semibold disabled:opacity-60">
+                    <span>אישור טבילה במקווה</span><span className="text-2xl leading-none">✓</span>
+                  </button>
+                  <p className="mt-1.5 text-center text-xs text-stone-400">טבילה בליל הטבילה — יש לוודא אישור/בירור עם רב במקרה של ספק</p>
+                </>
               )}
               {!canRecordSighting && !canDoHefsek && !canRecordBedika && !canRecordMikveh && !canMarkClean && (
                 <p className="text-center text-gray-400 text-sm py-3">
@@ -1021,25 +1096,36 @@ export default function Dashboard() {
     const gd   = todayCal.getDate()
     const dt   = DateTime.fromObject({ year: gd.year, month: gd.month, day: gd.day, hour: 12 }, { zone: tz })
     const prev = dt.minus({ days: 1 })
+    const next = dt.plus({ days: 1 })
     const todayZ = getZmanimForDay(dt.year, dt.month, dt.day, lat, lng, tz)
     const prevZ  = getZmanimForDay(prev.year, prev.month, prev.day, lat, lng, tz)
-    return { nightStart: prevZ.sunset, dayStart: todayZ.sunrise, dayEnd: todayZ.sunset }
+    const nextZ  = getZmanimForDay(next.year, next.month, next.day, lat, lng, tz)
+    return { dayStart: todayZ.sunrise, dayEnd: todayZ.sunset, prevNightStart: prevZ.sunset, nextNightEnd: nextZ.sunrise }
   }, [location, todayCal])
 
-  const currentPeriod = useMemo(() => {
+  // חלון הלילה הרלוונטי לרגע זה — "אתמול בלילה" אם עדיין לפני הזריחה, אחרת
+  // "הלילה" (מהשקיעה של היום ועד הזריחה הבאה) — כך הקו תמיד יודע איפה אנחנו.
+  const nightWindow = useMemo(() => {
     if (!todayZmanim) return null
-    const { nightStart, dayStart, dayEnd } = todayZmanim
-    if (nightStart && dayStart && clockNow >= nightStart && clockNow < dayStart) return 'night'
-    if (dayStart && dayEnd && clockNow >= dayStart && clockNow < dayEnd) return 'day'
-    return null
+    const { dayStart, prevNightStart, nextNightEnd, dayEnd } = todayZmanim
+    if (dayStart && clockNow < dayStart) return { start: prevNightStart, end: dayStart }
+    return { start: dayEnd, end: nextNightEnd }
   }, [todayZmanim, clockNow])
 
+  const currentPeriod = useMemo(() => {
+    if (!todayZmanim || !nightWindow) return null
+    const { dayStart, dayEnd } = todayZmanim
+    if (nightWindow.start && nightWindow.end && clockNow >= nightWindow.start && clockNow < nightWindow.end) return 'night'
+    if (dayStart && dayEnd && clockNow >= dayStart && clockNow < dayEnd) return 'day'
+    return null
+  }, [todayZmanim, nightWindow, clockNow])
+
   const currentProgressPct = useMemo(() => {
-    if (!todayZmanim || !currentPeriod) return null
-    const { nightStart, dayStart, dayEnd } = todayZmanim
+    if (!todayZmanim || !currentPeriod || !nightWindow) return null
+    const { dayStart, dayEnd } = todayZmanim
     const pctOf = (a, b) => (!a || !b) ? 0 : Math.min(100, Math.max(0, (clockNow - a) / (b - a) * 100))
-    return currentPeriod === 'night' ? pctOf(nightStart, dayStart) : pctOf(dayStart, dayEnd)
-  }, [todayZmanim, currentPeriod, clockNow])
+    return currentPeriod === 'night' ? pctOf(nightWindow.start, nightWindow.end) : pctOf(dayStart, dayEnd)
+  }, [todayZmanim, currentPeriod, nightWindow, clockNow])
 
   // ── בדיקות בוקר/ערב — זמינות רק בחלון ההלכתי; אזהרה אם הוחמץ ──
   const todayCleanDayNum = (effectivePhase === 'counting_7' && cycle?.hefsekTahara)
@@ -1064,10 +1150,20 @@ export default function Dashboard() {
     finally { setQuickLoading(false) }
   }
 
-  // ── טבילה במקווה — פעולה עצמאית שמתעדת עובדה, לא תלויה בכך שהאפליקציה סימנה
-  // את 7 הנקיים כמושלמים (בלי מקווה היא אסורה לבעלה גם אם אין דם) ──
-  const canQuickMikveh = (effectivePhase === 'counting_7' || effectivePhase === 'waiting_mikveh')
-    && !!cycle?.hefsekTahara && !cycle?.mikveDate?.actual
+  // ── טבילה במקווה — מותרת רק מליל הטבילה המוקדם ואילך (לא כל ימי הספירה),
+  // ורק בעונת הלילה (הטבילה היא בשקיעה/לילה, לא בשעות היום) — לא תלויה בכך
+  // שהאפליקציה סימנה את 7 הנקיים כ"הושלמו" (בלי מקווה היא אסורה גם אם אין דם) ──
+  const todayMikvehHD = cycle?.hefsekTahara?.hebrewDate
+    ? plannedMikvehDay(cycle.hefsekTahara.hebrewDate, cleanState?.complete ? cleanState.tovelDay : 7)
+    : null
+  // זמין לתעד מהיום המותר ואילך (בכל שעה) — אבל הכפתור עצמו פעיל רק בלילה
+  const mikvehDayReached = !!todayMikvehHD && !cycle?.mikveDate?.actual
+    && daysBetween(todayMikvehHD, todayHD) >= 0
+  const canQuickMikveh = mikvehDayReached && currentPeriod === 'night'
+
+  // עברה ליל הטבילה המתוכנן וטרם נרשמה טבילה — אזהרה
+  const todayMikvehOverdue = !!(todayMikvehHD && !cycle?.mikveDate?.actual &&
+    daysBetween(todayMikvehHD, todayHD) > 0)
 
   async function doQuickMikveh() {
     setQuickLoading(true)
@@ -1186,7 +1282,7 @@ export default function Dashboard() {
                   <div>
                     <p className="text-base font-semibold text-indigo-700">לילה</p>
                     <p className="font-mono text-base text-indigo-500" dir="ltr">
-                      {fmt(todayZmanim?.nightStart, location?.tz)}–{fmt(todayZmanim?.dayStart, location?.tz)}
+                      {fmt(nightWindow?.start, location?.tz)}–{fmt(nightWindow?.end, location?.tz)}
                     </p>
                   </div>
                 </div>
@@ -1245,14 +1341,30 @@ export default function Dashboard() {
             )}
 
             {/* ── טבילה במקווה — אם הגיע ליל הטבילה ולא ראתה דם ── */}
-            {canQuickMikveh && (
-              <button
-                onClick={doQuickMikveh}
-                disabled={quickLoading}
-                className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-base font-semibold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow disabled:opacity-50"
-              >
-                הלכתי למקווה ✓
-              </button>
+            {mikvehDayReached && (
+              <div>
+                {todayMikvehOverdue && (
+                  <div className="mb-2 flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-rose-600" />
+                    <span className="text-sm font-semibold text-rose-700">עברה ליל הטבילה — טרם נרשמה טבילה</span>
+                  </div>
+                )}
+                <ChafifaChecklist cycle={cycle} onRefresh={refresh} />
+                {canQuickMikveh ? (
+                  <button
+                    onClick={doQuickMikveh}
+                    disabled={quickLoading}
+                    className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4 text-base font-semibold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow disabled:opacity-50"
+                  >
+                    הלכתי למקווה ✓
+                  </button>
+                ) : (
+                  <p className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-center text-sm text-stone-400">
+                    אישור הטבילה יהיה זמין הערב (משקיעה)
+                  </p>
+                )}
+                <p className="mt-1.5 text-center text-xs text-stone-400">טבילה בליל הטבילה — יש לוודא אישור/בירור עם רב במקרה של ספק</p>
+              </div>
             )}
 
             {/* ── פרטי היום ופעולות (ראייה / הפסק / טבילה) ── */}

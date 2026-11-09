@@ -269,6 +269,18 @@ export async function recordBedika(payload) {
   return serialize(cycle)
 }
 
+// פורט של POST /api/cycle/chafifa — סימון פריט הכנה לטבילה (חפיפה)
+export async function recordChafifa(payload) {
+  await load()
+  const { itemKey, checked, cycleId } = payload
+  const cycle = cycleByIdOrCurrentRaw(cycleId)
+  if (!cycle) throw new Error('no active cycle')
+
+  cycle.chafifaChecklist = { ...(cycle.chafifaChecklist ?? {}), [itemKey]: !!checked }
+  await save()
+  return serialize(cycle)
+}
+
 export async function recordMikveh(payload) {
   await load()
   const { gregorianDatetime, cycleId } = payload

@@ -35,6 +35,9 @@ export const api = {
   recordMikveh: (payload) =>
     request('/cycle/mikveh', { method: 'POST', body: JSON.stringify(payload) }),
 
+  recordChafifa: (payload) =>
+    request('/cycle/chafifa', { method: 'POST', body: JSON.stringify(payload) }),
+
   updateSettings: (payload) =>
     request('/cycle/settings', { method: 'POST', body: JSON.stringify(payload) }),
 

@@ -47,6 +47,7 @@ export const api = {
   recordHefsek: (payload) => store.recordHefsek(payload),
   recordBedika: (payload) => store.recordBedika(payload),
   recordMikveh: (payload) => store.recordMikveh(payload),
+  recordChafifa: (payload) => store.recordChafifa(payload),
   updateSettings: (payload) => store.updateSettings(payload),
 
   // ── veset observations ──────────────────────────────────────────────────

@@ -128,6 +128,22 @@ router.post('/bedika', async (req, res) => {
   }
 })
 
+// POST /api/cycle/chafifa  { itemKey, checked, cycleId } — סימון פריט הכנה לטבילה (חפיפה)
+router.post('/chafifa', async (req, res) => {
+  try {
+    const { itemKey, checked, cycleId } = req.body
+    const cycle = await cycleByIdOrCurrent(cycleId)
+    if (!cycle) return res.status(400).json({ error: 'no active cycle' })
+
+    cycle.chafifaChecklist = { ...cycle.chafifaChecklist, [itemKey]: !!checked }
+    cycle.markModified('chafifaChecklist')
+    await cycle.save()
+    res.json(serialize(cycle, await settingsDoc()))
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
 // POST /api/cycle/mikveh — סוגר את הנידה (status=completed). ראיה חדשה אחריה = נידה חדשה.
 router.post('/mikveh', async (req, res) => {
   try {

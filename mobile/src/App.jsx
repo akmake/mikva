@@ -1,24 +1,29 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
-import HebrewCalendarPage from './pages/HebrewCalendarPage'
-import MapPage from './pages/MapPage'
-import SideNav from './components/SideNav'
+import { AppProvider } from './AppState'
+import Today from './screens/Today'
+import Calendar from './screens/Calendar'
+import Mikvaot from './screens/Mikvaot'
+import TabBar from './components/TabBar'
 
-// אפליקציית המובייל = שני מסכים בלבד, אופליין מלא:
-//   • "/"     — לוח עברי (מסך הפתיחה; מעדכנים בו ראיות, הפסק, בדיקה, טבילה)
-//   • "/map"  — מפת מקוואות (183 מקוואות + אריחי מפה מוטמעים במכשיר)
-// הניווט בין המסכים דרך תפריט צד (SideNav) — כפתור המבורגר צף בכל מסך.
-// Dashboard.jsx מיובא בתוך HebrewCalendarPage רק בשביל DaySheet/getCellColors/
-// SettingsSheet — הוא עצמו לא מנותב.
+// שלושה מסכים, אופליין מלא:
+//   • "/"         — היום: תאריך, שעון, מצב טהרה, עונות ופעולות
+//   • "/calendar" — לוח עברי חודשי עם סטטוס כל יום
+//   • "/mikvaot"  — מפת מקוואות (אריחים מוטמעים במכשיר)
 // HashRouter — בטוח לטעינת file:// בתוך ה-WebView של Capacitor.
 export default function App() {
   return (
     <HashRouter>
-      <Routes>
-        <Route path="/" element={<HebrewCalendarPage />} />
-        <Route path="/map" element={<MapPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      <SideNav />
+      <AppProvider>
+        <div dir="rtl" className="mx-auto min-h-[100dvh] max-w-xl">
+          <Routes>
+            <Route path="/" element={<Today />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/mikvaot" element={<Mikvaot />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </div>
+        <TabBar />
+      </AppProvider>
     </HashRouter>
   )
 }

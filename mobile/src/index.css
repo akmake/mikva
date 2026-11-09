@@ -1,3 +1,68 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+    font-feature-settings: 'tnum' 1;
+    overscroll-behavior: none;
+    /* זוהר רך בראש המסך ועומק עדין בתחתית */
+    background-color: #F8ECEC;
+    background-image:
+      radial-gradient(120% 55% at 50% -8%, #FFFBFA 0%, rgba(255,251,250,0) 70%),
+      linear-gradient(180deg, #F8ECEC 0%, #F2DEE1 100%);
+    background-attachment: fixed;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:disabled { cursor: default; }
+  input, select { font: inherit; color: inherit; }
+  h1, h2, h3, p { margin: 0; }
+  ::selection { background: #3B1F2F22; }
+}
+
+@layer components {
+  /* תווית קטנה מעל אזור — כמו כותרת-משנה בספר */
+  .eyebrow {
+    @apply text-micro font-semibold text-rose;
+  }
+  /* קו כפול דק לפתיחת פרקים */
+  .rule-double {
+    border-top: 1px solid #EBD3D8;
+    box-shadow: none;
+  }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .scroll-clean::-webkit-scrollbar { display: none; }
+  .scroll-clean { scrollbar-width: none; }
+}
+
+/* ── MapLibre: פופאפ וכפתורים בסגנון האפליקציה ── */
+.maplibregl-popup-content {
+  background: #FDF7F6 !important;
+  border: 1px solid #EBD3D8;
+  border-radius: 4px !important;
+  padding: 14px 14px 12px !important;
+  box-shadow: 0 10px 28px -10px rgba(59, 31, 47, 0.45) !important;
+  font-family: Heebo, system-ui, sans-serif;
+  color: #3B1F2F;
+}
+.maplibregl-popup-tip { display: none; }
+.maplibregl-popup-close-button {
+  right: auto !important;
+  left: 4px;
+  top: 2px;
+  font-size: 20px;
+  color: #9B7F8E;
+}
+.maplibregl-ctrl-group {
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  border: 1px solid #EBD3D8;
+  background: #FDF7F6 !important;
+}
+.maplibregl-ctrl-group button { border-color: #EBD3D8 !important; }
+.maplibregl-ctrl-attrib { background: rgba(245, 239, 225, 0.8) !important; font-size: 10px; }
