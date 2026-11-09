@@ -1,0 +1,395 @@
+<meta charset="utf-8">
+<title>מנגנון החישוב לאישור הרב</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Assistant:wght@400;600;700&display=swap">
+<style>
+/* טופס בדיקה מודפס: דף A4 לבן, טקסט הלכתי בסריפה, טורי אישור בצד כל כלל. עיצוב נייר בלבד, ללא מצב כהה. */
+:root {
+  --paper: #ffffff; --ink: #1b1d22; --soft: #565b66; --rule: #b9bdc6; --hair: #dfe1e6;
+  --mark: #23406e; --tint: #f1f3f7;
+  --serif: "Frank Ruhl Libre", David, "Times New Roman", serif;
+  --sans: "Assistant", Arial, sans-serif;
+  color-scheme: light;
+}
+html { direction: rtl; }
+body { background: var(--paper); color: var(--ink); font: 400 15px/1.55 var(--serif); margin: 0;
+  padding-block: 28px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sheet { max-width: 860px; margin: 0 auto; display: grid; gap: 26px; }
+.sheet > * { min-width: 0; }
+table, td, th { font-size: inherit; line-height: inherit; color: inherit; }
+
+header { border-bottom: 2px solid var(--ink); padding-bottom: 12px; display: grid; gap: 4px; }
+.kicker { font: 600 13px var(--sans); color: var(--mark); letter-spacing: .02em; }
+h1 { font: 700 30px/1.15 var(--serif); margin: 0; text-wrap: balance; }
+.meta { font: 400 14px var(--sans); color: var(--soft); }
+.fill { display: flex; flex-wrap: wrap; gap: 8px 28px; font: 400 14px var(--sans); margin-top: 10px; }
+.fill span { display: inline-flex; gap: 6px; align-items: flex-end; }
+.fill i { display: inline-block; width: 170px; border-bottom: 1px solid var(--ink); height: 1em; }
+
+h2 { font: 700 21px/1.25 var(--serif); margin: 0 0 3px; }
+.lead { margin: 0 0 10px; color: var(--soft); font: 400 14px/1.5 var(--sans); }
+h3 { font: 700 15px var(--sans); margin: 14px 0 6px; color: var(--mark); }
+p { margin: 0 0 8px; }
+
+.intro { display: grid; gap: 8px; font-size: 15px; }
+.intro ul { margin: 0; padding-right: 20px; display: grid; gap: 4px; }
+.note { border: 1px solid var(--ink); padding: 10px 14px; font: 400 14.5px/1.5 var(--sans); }
+.note b { font-weight: 700; }
+
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+.rules { min-width: 620px; }
+th { font: 600 12.5px var(--sans); text-align: right; color: var(--soft); border-bottom: 1.5px solid var(--ink); padding: 3px 6px; }
+td { border-bottom: 1px solid var(--hair); padding: 7px 6px; vertical-align: top; }
+tr { break-inside: avoid; }
+.n { width: 30px; font: 600 13px var(--sans); color: var(--soft); font-variant-numeric: tabular-nums; }
+.src { width: 112px; font: 400 13px/1.4 var(--sans); }
+.ok { width: 118px; font: 400 13px/1.7 var(--sans); white-space: pre-line; border-right: 1px solid var(--hair); }
+.ok::before { content: "☐ מאושר\A☐ לתקן: ............\A"; white-space: pre; }
+.eg { display: block; margin-top: 3px; font: 400 13.5px/1.45 var(--sans); color: var(--soft); }
+.see { font: 600 12.5px var(--sans); color: var(--mark); white-space: nowrap; }
+
+.results { min-width: 620px; font: 400 13.5px/1.45 var(--sans); }
+.results .q-col { width: 62px; }
+.results td:first-child { width: 190px; }
+.results ul { margin: 0; padding: 0; list-style: none; }
+
+.q { border: 1px solid var(--rule); padding: 10px 14px 12px; break-inside: avoid; display: grid; gap: 7px; }
+.qs { display: grid; gap: 12px; }
+.q h3 { margin: 0; color: var(--ink); font: 700 16px/1.3 var(--serif); }
+.q h3 b { color: var(--mark); font: 700 13px var(--sans); margin-left: 6px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cols > div { min-width: 0; }
+.lab { display: block; font: 600 12.5px var(--sans); color: var(--soft); margin-bottom: 2px; }
+.cols p { margin: 0; font-size: 14.5px; line-height: 1.5; }
+.ruling { font: 400 13.5px var(--sans); border-top: 1px dotted var(--rule); padding-top: 6px; display: grid; gap: 15px; }
+.ruling i { display: block; border-bottom: 1px solid var(--rule); height: 0; }
+
+.miss { min-width: 560px; font: 400 14px/1.45 var(--sans); }
+.miss .src { width: 96px; }
+.miss .ok2 { width: 136px; font-size: 13px; white-space: nowrap; }
+.miss .ok2::before { content: "☐ להוסיף   ☐ לא נדרש"; white-space: pre; }
+
+.sign { display: grid; gap: 22px; font: 400 14.5px var(--sans); }
+.lines { display: grid; gap: 28px; }
+.lines i { display: block; border-bottom: 1px solid var(--rule); height: 0; }
+.signrow { display: flex; flex-wrap: wrap; gap: 26px; }
+.signrow span { flex: 1 1 200px; border-top: 1px solid var(--ink); padding-top: 4px; margin-top: 30px; }
+
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } h1 { font-size: 25px; } }
+@page { size: A4; margin: 15mm 14mm 16mm; @bottom-center { content: counter(page) " / " counter(pages); font: 10pt Arial, sans-serif; } }
+@media print {
+  body { padding: 0; font-size: 11pt; }
+  .sheet { max-width: none; gap: 16pt; }
+  .tw { overflow: visible; }
+  .rules, .results, .miss { min-width: 0; }
+  section.brk { break-before: page; }
+  h2, h3 { break-after: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
+
+<div class="sheet">
+
+<header>
+  <div class="kicker">לעיון ולהכרעת הרב</div>
+  <h1>כללי החישוב של תוכנת הנידה: נא לאשר או לתקן</h1>
+  <div class="meta">מצב התוכנה נכון לכ"ט במרחשוון תשפ"ז (9.11.2026)</div>
+  <div class="fill"><span>שם הרב: <i></i></span><span>תאריך העיון: <i></i></span></div>
+</header>
+
+<section class="intro">
+  <p><b>כבוד הרב שליט"א,</b></p>
+  <p>נבנתה תוכנה שמחשבת עבור האשה את ימי הפרישה והטהרה: הפסק טהרה, שבעה נקיים וטבילה, וכן עונה בינונית, ווסת החודש, ווסת ההפלגה, סירוג ודילוג. מכיוון שטעות בחישוב משמעותה איסור, התוכנה לא תשמש למעשה לפני שהרב יעבור על כל כלליה.</p>
+  <p>הדף מפרט <b>בדיוק מה התוכנה עושה</b>, כלל אחרי כלל, ובצד כל כלל המקור שממנו נלקח.</p>
+  <h3>מה מבוקש מהרב</h3>
+  <ul>
+    <li><b>חלקים א'–ד' (כללי החישוב):</b> לקרוא כל כלל, ולסמן בצידו <b>"מאושר"</b> אם הוא נכון, או <b>"לתקן"</b> ולכתוב את הדין הנכון.</li>
+    <li><b>חלק ה' (19 שאלות):</b> אלו המקומות שבהם התוכנה נוהגת אחרת ממה שכתוב במקור, או שאין בידינו מקור ברור. בכל שאלה מוצג מה כתוב בספר ומה התוכנה עושה, ולמטה מקום להכרעת הרב.</li>
+    <li><b>חלק ו':</b> דינים שהתוכנה אינה מחשבת כלל. לסמן אם יש להוסיף אותם.</li>
+  </ul>
+  <h3>הערות להבנת הדף</h3>
+  <ul>
+    <li>המקור העיקרי הוא "טהרה כהלכה" (הרב יקותיאל פרקש) פרקים טו, יז, כד. ההפניה "כד,לד" פירושה פרק כד סעיף לד.</li>
+    <li>הציטוטים הועתקו מסריקת הספר, ותוקנו בהם רק שגיאות סריקה ברורות. פרק טז (הפסק טהרה) חסר בידינו.</li>
+    <li>בעריכת הדף לא נעשתה שום הכרעה הלכתית. כל ספק מוצג כשאלה לרב.</li>
+    <li>הדוגמאות עם תאריכים הן לצורך השוואה: אפשר לחשב אותן ביד ולראות אם התוצאה זהה.</li>
+  </ul>
+  <div class="note"><b>העיקר:</b> חלק ה' הוא החשוב ביותר. עד שתתקבל הכרעת הרב בנקודות שבו, אין להסתמך על התוכנה למעשה.</div>
+</section>
+
+<section>
+  <h2>חלק א': יסודות החישוב</h2>
+  <p class="lead">כיצד נקבעים התאריך, העונה וסוג הראייה.</p>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>מה התוכנה עושה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td>כל החישובים נעשים לפי התאריך העברי בלבד.</td><td class="src">כד, הבהרות א</td><td class="ok"></td></tr>
+      <tr><td class="n">2</td><td>יום הוא מהנץ עד השקיעה, ולילה הוא מהשקיעה עד הנץ. המשתמשת בוחרת תאריך עברי ומקלידה שעה, והתוכנה קובעת ממנה את העונה.<span class="eg">ראתה השכם בבוקר לפני הנץ: עונת הלילה של אותו תאריך. ראתה אחרי השקיעה: עונת הלילה של התאריך העברי הבא.</span> <span class="see">שאלות 15, 16</span></td><td class="src">כד,ט</td><td class="ok"></td></tr>
+      <tr><td class="n">3</td><td>נכנסות לחישובי הווסתות רק ראייה רגילה או דם בהרגשה, ודם בבדיקה בעד בדוק.</td><td class="src">כד,ג</td><td class="ok"></td></tr>
+      <tr><td class="n">4</td><td>כתם, דם בתולים, דם לידה, הפלה, דם בקינוח ובדיקת רופא שמטמאה מספק נרשמים, אך אינם יוצרים חשש ואינם קוטעים הפלגה.</td><td class="src">כד,ג-ה</td><td class="ok"></td></tr>
+      <tr><td class="n">5</td><td>ראייה שאירעה פחות מ-7 ימים אחרי הדם האחרון שנרשם נחשבת המשך. ראייה אחרי 7 ימים ומעלה נחשבת ראייה חדשה. כל חשש נמדד מהדם הראשון של הקבוצה.<span class="eg">ראיות בא', ה', י' ניסן נחשבות ראייה אחת שתחילתה א' ניסן.</span> <span class="see">שאלה 5</span></td><td class="src">כד,לב; כד,נב</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>חלק ב': תהליך הטהרה</h2>
+  <p class="lead">הדוגמה: ראתה בי' ניסן. הפסק טהרה בי"ד, שבעה נקיים מט"ו עד כ"א, טבילה בליל כ"ב.</p>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>מה התוכנה עושה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">6</td><td>הפסק טהרה אפשרי לכל המוקדם ביום החמישי, כשיום הראייה הוא היום הראשון (ראייה + 4 ימים).</td><td class="src">טו,א; טו,י</td><td class="ok"></td></tr>
+      <tr><td class="n">7</td><td>התוכנה מציגה חלון להפסק טהרה ממנחה קטנה עד השקיעה. השעה מוצגת בלבד ואינה נאכפת. <span class="see">שאלה 19</span></td><td class="src">פרק טז חסר בידינו</td><td class="ok"></td></tr>
+      <tr><td class="n">8</td><td>היום הראשון של שבעה נקיים הוא למחרת ההפסק.</td><td class="src">טו,ה; יז,כה</td><td class="ok"></td></tr>
+      <tr><td class="n">9</td><td>התוכנה מציגה בכל יום חלון לבדיקת בוקר (מעלות השחר, 72 דקות לפני הנץ, עד הנץ) וחלון לבדיקת ערב (ממנחה קטנה עד השקיעה). <span class="see">שאלה 17</span></td><td class="src">יז,ב</td><td class="ok"></td></tr>
+      <tr><td class="n">10</td><td>הספירה מושלמת כשיש חלון רצוף של 7 ימים שבו יום ראשון ויום שביעי נבדקו נקי (די בבדיקה אחת ביום) ולא נמצא בו דם. תוצאות המנוע:
+        <span class="eg">בדיקות בימים א' וז': הושלם, טבילה במוצאי ז' (יז,ח).<br>רק א' / רק ז' / א' וח' / ג' וז': לא הושלם (יז,י; יז,יג).<br>א', ג' וט': הושלם במוצאי ט' (יז,יב).<br>א', ג' וח': לא הושלם.</span> <span class="see">שאלה 18</span></td><td class="src">יז,ח-יג</td><td class="ok"></td></tr>
+      <tr><td class="n">11</td><td>נמצא דם בבדיקה בתוך הספירה: הספירה נפסלת, ונדרש הפסק טהרה חדש מיד ללא המתנת 5 ימים.</td><td class="src">טו,ה; יז,כד</td><td class="ok"></td></tr>
+      <tr><td class="n">12</td><td>נרשמה ראייה בתוך הספירה, פחות מ-7 ימים אחרי הדם האחרון: הספירה מתאפסת ונדרש הפסק חדש ללא המתנה. <span class="see">לראייה מאוחרת יותר ראו שאלה 6</span></td><td class="src">טו,ה; יז,כד</td><td class="ok"></td></tr>
+      <tr><td class="n">13</td><td>טבילה בליל שאחרי יום הספירה האחרון (הפסק + 8 ימים במקרה הרגיל).</td><td class="src">יז,יא-יג</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="brk">
+  <h2>חלק ג': חישובי הווסתות</h2>
+  <p class="lead">התאריכים בדוגמאות הם מניסן עד אלול בשנה פשוטה (ניסן 30, אייר 29, סיון 30, תמוז 29, אב 30, אלול 29).</p>
+
+  <h3>עונה בינונית</h3>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>מה התוכנה עושה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">14</td><td>יום החשש הוא היום השלושים לראייה, כשיום הראייה הוא היום הראשון (ראייה + 29).<span class="eg">ראתה בי' ניסן: ט' אייר.</span></td><td class="src">כד,כה</td><td class="ok"></td></tr>
+      <tr><td class="n">15</td><td>החשש הוא מעת לעת: לילה ויום של אותו תאריך.</td><td class="src">כד,כח</td><td class="ok"></td></tr>
+      <tr><td class="n">16</td><td>אינה נעקרת בכך שעברה בלי ראייה.</td><td class="src">כד,ל</td><td class="ok"></td></tr>
+      <tr><td class="n">17</td><td>ראייה חדשה (אחרי 7 ימים) מעבירה את החשש אל הראייה החדשה.</td><td class="src">כד,לא-לב</td><td class="ok"></td></tr>
+      <tr><td class="n">18</td><td>מי שיש לה ווסת קבוע שלא נעקר אינה חוששת לעונה בינונית. כשהקבוע נעקר היא חוזרת לחשוש.</td><td class="src">כד,כז; כד,סה</td><td class="ok"></td></tr>
+      <tr><td class="n">19</td><td>אם לא ראתה, הלוח מציג את החשש שוב כל 30 יום עד הראייה הבאה.<span class="eg">ראתה בי' ניסן: ט' אייר, י' סיון, י' תמוז, י"א אב וכן הלאה.</span> <span class="see">שאלה 1</span></td><td class="src">ראו שאלה 1</td><td class="ok"></td></tr>
+      <tr><td class="n">20</td><td>הגדרה אופציונלית, כבויה כברירת מחדל: גם יום ל"א (ראייה + 30), בעונת הראייה בלבד.</td><td class="src">כד,כט</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>ווסת החודש</h3>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>מה התוכנה עושה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">21</td><td>חוששת בחודש הבא לאותו יום בחודש, באותה עונה.<span class="eg">ראתה בי' ניסן ביום: י' אייר ביום.</span></td><td class="src">כד,לד</td><td class="ok"></td></tr>
+      <tr><td class="n">22</td><td>הקדימה לראות לפני יום החשש: החשש נשאר, ונוסף חשש מהראייה החדשה.</td><td class="src">כד,לט</td><td class="ok"></td></tr>
+      <tr><td class="n">23</td><td>חשש שאינו קבוע נעקר בפעם אחת שעבר היום בלי ראייה, ואינו חוזר.</td><td class="src">כד,לח; כד,סג</td><td class="ok"></td></tr>
+      <tr><td class="n">24</td><td>קביעות: שלושה חודשים רצופים, אותו יום בחודש ואותה עונה.</td><td class="src">כד,לו</td><td class="ok"></td></tr>
+      <tr><td class="n">25</td><td>ראתה בל' בחודש והחודש הבא חסר: כברירת מחדל אין חשש חודש. בהגדרה חלופית: חוששת בא' של החודש שאחרי החסר.<span class="eg">ראתה בל' ניסן: לפי ברירת המחדל אין חשש; לפי החלופה א' סיון.</span></td><td class="src">כד,לה</td><td class="ok"></td></tr>
+      <tr><td class="n">26</td><td>התחילה לראות לפני יום החשש והדם נמשך לתוכו: החשש נעקר. בקבוע זו עקירה אחת מתוך שלוש. <span class="see">שאלה 7</span></td><td class="src">כד,מ</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>ווסת ההפלגה</h3>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>מה התוכנה עושה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">27</td><td>ברירת המחדל: מתחילת ראייה לתחילת ראייה, והחשש נספר מתחילת הראייה האחרונה.<span class="eg">י' ניסן ואז ח' אייר: הפלגה 28, החשש בז' סיון.</span></td><td class="src">כד,מו</td><td class="ok"></td></tr>
+      <tr><td class="n">28</td><td>הגדרה חלופית, שיטת שוע"ר: מההפסק טהרה עד תחילת הראייה הבאה, והחשש נספר מההפסק האחרון. <span class="see">שאלות 3, 11, 12</span></td><td class="src">כד,מו</td><td class="ok"></td></tr>
+      <tr><td class="n">29</td><td>עונת החשש היא עונת הראייה האחרונה באותה הפלגה.</td><td class="src">כד,מז</td><td class="ok"></td></tr>
+      <tr><td class="n">30</td><td>הקדימה לראות בהפלגה קצרה: ההפלגה הארוכה אינה נעקרת, ושתיהן נספרות מהראייה האחרונה.<span class="eg">הפלגות 33 ואז 24: חוששת ליום ה-24 וליום ה-33 מהראייה האחרונה.</span></td><td class="src">כד,מח-מט</td><td class="ok"></td></tr>
+      <tr><td class="n">31</td><td>עבר יום ההפלגה הקצרה בלי ראייה וראתה אחריו: חשש שאינו קבוע נעקר.</td><td class="src">כד,מח</td><td class="ok"></td></tr>
+      <tr><td class="n">32</td><td>קביעות: שלוש הפלגות שוות רצופות (ארבע ראיות). <span class="see">שאלה 3</span></td><td class="src">כד,מה</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>עקירת ווסת קבוע</h3>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>מה התוכנה עושה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">33</td><td>ווסת קבוע נעקר בשלוש פעמים שעבר יום החשש בלי ראייה. המשתמשת מסמנת זאת בכפתור "יום החשש עבר ללא ראיה". קבוע לחומרא נעקר גם הוא בשלוש.<span class="eg">קבוע לה' בחודש: ה' תמוז, ה' אב, ה' אלול. אחרי השלישי נעקר וחוזרת העונה הבינונית. כך פועל מנוע החישוב; כרגע המסך חוסם את הסימון השני והשלישי בגלל תקלה טכנית.</span> <span class="see">שאלות 9, 10</span></td><td class="src">כד,סב-סג</td><td class="ok"></td></tr>
+      <tr><td class="n">34</td><td>שינתה לראות ביום אחר: חוששת גם לקבוע וגם לחשש החדש.</td><td class="src">כד,לח</td><td class="ok"></td></tr>
+      <tr><td class="n">35</td><td>ראתה שוב ביום או בהפלגה שהיו קבועים, אפילו פעם אחת: חוזר להיות קבוע מיד.</td><td class="src">כד, הערה לסעיפים נ-נא</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>ווסת הסירוג וווסת הדילוג</h3>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>מה התוכנה עושה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">36</td><td>סירוג: אותו יום בחודש ואותה עונה, בהפרש קבוע של 2 עד 6 חודשים. ארבע ראיות הן קבוע גמור, ושלוש הן קבוע לחומרא.<span class="eg">ט"ו ניסן, ט"ו סיון, ט"ו אב: קבוע לחומרא, החשש בט"ו תשרי.</span> <span class="see">שאלה 8</span></td><td class="src">כד,עד; כד,עז</td><td class="ok"></td></tr>
+      <tr><td class="n">37</td><td>דילוג בימי החודש: חודשים עוקבים, הפרש קבוע בימים, אותה עונה. ארבע ראיות הן קבוע, ושלוש הן לחומרא.<span class="eg">ט"ו ניסן, ט"ז אייר, י"ז סיון, י"ח תמוז: קבוע, החשש בי"ט אב.</span></td><td class="src">כד,פד; כד,פז</td><td class="ok"></td></tr>
+      <tr><td class="n">38</td><td>דילוג בהפלגות: הפלגות שעולות או יורדות בהפרש קבוע, אותה עונה. ארבע הפלגות הן קבוע, ושלוש הן לחומרא.<span class="eg">הפלגות 20, 21, 22 (מא' ניסן עד ה' סיון): לחומרא, הפלגה 23, החשש בכ"ח סיון.</span></td><td class="src">כד,פו; כד,פז</td><td class="ok"></td></tr>
+      <tr><td class="n">39</td><td>קבוע לחומרא אינו מבטל את שאר החששות ואת העונה הבינונית.</td><td class="src">כד,עז</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>מסולקת דמים</h3>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>מה התוכנה עושה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">40</td><td>מעוברת: מסולקת מיום 90 מתחילת ההריון. הסיום ביום 280 הוא הערכה של התוכנה למועד הלידה, ואין לו מקור.</td><td class="src">כד,צו</td><td class="ok"></td></tr>
+      <tr><td class="n">41</td><td>מינקת: מסולקת 24 חודש מהלידה. <span class="see">שאלה 14</span></td><td class="src">כד,צט</td><td class="ok"></td></tr>
+      <tr><td class="n">42</td><td>בימי הסילוק אינה קובעת ווסת. <span class="see">שאלה 13</span></td><td class="src">כד,ק</td><td class="ok"></td></tr>
+      <tr><td class="n">43</td><td>ראתה בימי הסילוק: חוששת כווסת שאינו קבוע.</td><td class="src">כד,צח</td><td class="ok"></td></tr>
+      <tr><td class="n">44</td><td>חשש שנוצר לפני הסילוק ויום החשש חל בתוכו: אינה חוששת לו.</td><td class="src">כד,צז-צח</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="brk">
+  <h2>חלק ד': הגדרות ודוגמאות מלאות</h2>
+  <p class="lead">שלוש מחלוקות נקבעות בהגדרה של כל משתמשת. לכל הגדרה נדרשת ברירת מחדל מאושרת.</p>
+  <div class="tw"><table class="rules">
+    <thead><tr><th class="n">#</th><th>הגדרה</th><th>ברירת המחדל היום</th><th>החלופה</th><th class="src">מקור</th><th class="ok">הכרעה</th></tr></thead>
+    <tbody>
+      <tr><td class="n">45</td><td>חישוב הפלגה</td><td>מתחילה לתחילה</td><td>שיטת שוע"ר (מההפסק)</td><td class="src">כד,מו</td><td class="ok"></td></tr>
+      <tr><td class="n">46</td><td>ראייה בל' כשהחודש הבא חסר</td><td>צמח צדק: אין חשש</td><td>ראש חודש הגורם</td><td class="src">כד,לה</td><td class="ok"></td></tr>
+      <tr><td class="n">47</td><td>יום ל"א בעונה בינונית</td><td>לא חוששת</td><td>חוששת בעונת הראייה</td><td class="src">כד,כט</td><td class="ok"></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>תוצאות הרצה של המנוע</h3>
+  <p class="lead">לחשב ביד ולהשוות. כל הראיות ביום אלא אם צוין אחרת. ההגדרות בברירת המחדל.</p>
+  <div class="tw"><table class="results">
+    <thead><tr><th>ראיות שהוזנו</th><th>ימי החשש שהתוכנה מציגה</th><th class="q-col">ראו</th></tr></thead>
+    <tbody>
+      <tr><td>י' ניסן</td><td><ul><li>ט' אייר, מעת לעת: עונה בינונית</li><li>י' אייר, יום: ווסת החודש</li></ul></td><td></td></tr>
+      <tr><td>י' ניסן, ח' אייר</td><td><ul><li>י' אייר, יום: ווסת החודש</li><li>ז' סיון, יום: הפלגה 28</li><li>ח' סיון, יום: ווסת החודש</li><li>ח' סיון, מעת לעת: עונה בינונית</li></ul></td><td></td></tr>
+      <tr><td>א' ניסן, כ"ט ניסן (שתיהן בלילה)</td><td><ul><li>א' אייר, לילה: ווסת החודש</li><li>כ"ז אייר, לילה: הפלגה 28</li><li>כ"ח אייר, מעת לעת: עונה בינונית</li><li>כ"ט אייר, לילה: ווסת החודש</li></ul></td><td></td></tr>
+      <tr><td>א' ניסן, ד' אייר, כ"ח אייר</td><td><ul><li>ד' סיון, יום: ווסת החודש</li><li>כ"ג סיון, יום: הפלגה 24</li><li>כ"ח סיון, יום: ווסת החודש</li><li>כ"ח סיון, מעת לעת: עונה בינונית</li><li>ב' תמוז, יום: הפלגה 33</li></ul></td><td></td></tr>
+      <tr><td>ה' ניסן, ה' אייר, ה' סיון</td><td><ul><li>ד' תמוז, יום: הפלגה 29</li><li>ה' תמוז, יום: ווסת החודש, <b>קבוע</b></li><li>ה' תמוז, יום: הפלגה 30</li></ul></td><td class="q-col see">שאלה 2</td></tr>
+      <tr><td>א' ניסן, כ"ט ניסן, כ"ז אייר, כ"ו סיון</td><td><ul><li>כ"ז סיון, יום: ווסת החודש</li><li>כ"ד תמוז, יום: הפלגה 28, <b>קבוע</b></li><li>כ"ו תמוז, יום: ווסת החודש</li></ul></td><td class="q-col see">שאלה 2</td></tr>
+      <tr><td>ט"ו ניסן, ט"ז אייר, י"ז סיון, י"ח תמוז</td><td><ul><li>י"ח אב, יום: ווסת החודש</li><li>י"ט אב, יום: דילוג, <b>קבוע</b></li><li>כ' אב, יום: הפלגה 31</li></ul></td><td class="q-col see">שאלה 2</td></tr>
+      <tr><td>ט"ו ניסן, ט"ו סיון, ט"ו אב</td><td><ul><li>י"ד אלול, מעת לעת: עונה בינונית</li><li>ט"ו אלול, יום: ווסת החודש</li><li>ט"ו תשרי, יום: הפלגה 59</li><li>ט"ו תשרי, יום: סירוג, <b>לחומרא</b></li><li>ט"ו כסלו, יום: סירוג כל 4 חודשים</li></ul></td><td class="q-col see">שאלה 8</td></tr>
+      <tr><td>א' ניסן והפסק ו' ניסן, א' אייר והפסק ו' אייר, בשיטת שוע"ר</td><td><ul><li>א' סיון, יום: ווסת החודש</li><li>א' סיון, מעת לעת: עונה בינונית</li><li>ב' סיון, יום: הפלגה 25 לפי שוע"ר</li><li>ב' סיון, יום: הפלגה 30 מתחילה לתחילה</li></ul></td><td class="q-col see">שאלה 12</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="brk">
+  <h2>חלק ה': נקודות להכרעת הרב</h2>
+  <p class="lead">בכל נקודה מוצג הכתוב במקור לצד מה שהתוכנה עושה. הסדר הוא לפי מידת ההשפעה על ימי הפרישה.</p>
+  <div class="qs">
+
+    <div class="q"><h3><b>שאלה 1</b>עונה בינונית שעברה בלי ראייה: האם חוזרת כל 30 יום?</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,סא: "שאם חששה לעונה בינונית ועבר היום ולא ראתה בו, אינה חוששת כעבור שלושים יום מהעונה בינונית, אלא רק כאשר תשוב לראות, אזי תחשוש כעבור 30 יום מראיה זו".<br>ובהערה לכד,כה: "וחשש עונה בינונית אינו מתבטל לעולם מאשה שאין ווסתה קבוע".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>מציגה את החשש כל 30 יום עד הראייה הבאה. כך נקבע בעבר על פי הלשון שבהערה. לפי כד,סא היה מוצג רק יום ל' אחד לכל ראייה.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 2</b>קביעת ווסת: האם מבטלת את החששות שאינם קבועים?</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,לז: "כל קביעות ווסת עוקרת בדרך ממילא את כל החששות שאינם קבועים שקדמו לו ... ומעתה חוששת רק לווסת זה הקבוע". וכן כד,מה.</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>ממשיכה להציג את החששות שאינם קבועים לצד הקבוע. לדוגמה, ווסת חודש קבוע לה' בחודש ועמו הפלגות 29 ו-30.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 3</b>קביעת ווסת הפלגה: דרישת אותה עונה, ומניין עונות בשיטת שוע"ר</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד, הבהרות ב; כד,מז: בשיטת שוע"ר מונים את מספר העונות (39 או 40), והקביעות רק כשהשלוש באותו מספר עונות. בשיטת הפוסקים: שלוש הפלגות שוות בימים "שחלו כולן בעונת היום או כולן בעונת הלילה".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>בשתי השיטות סופרת ימים בלבד ואינה בודקת עונה. הפלגות 20, 20, 20 בעונות מעורבות (יום, לילה, יום, יום) נרשמות כווסת קבוע.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 4</b>שתי ראיות ממעיין סתום ושלישית ממעיין פתוח</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,נג-נה: "כל שראתה שתי ראיות ראשונות ממעין סתום, וראיה שלישית ממעין פתוח, קבעה לה ווסת". הדוגמה: א' ניסן, א' אייר, כ"ה אייר ופסקה, ושוב א' סיון.</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>הראייה בא' סיון נבלעת בנידה של כ"ה אייר, ולא נקבע ווסת. אין בתוכנה דרך לסמן "פסקה וחזרה".</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 5</b>שבעת הימים של מעיין פתוח: מאיזו נקודה נמדדים?</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,נב: "מעיין פתוח: ראייה נוספת שרואה בתוך שבעה ימים, מאז שהחל הווסת. מעיין סתום: ראיה חדשה שרואה לאחר שכבר עברו לפחות שבעה ימים, מתחילת הראיה הקודמת". וכן כד,לב.</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>מודדת מהדם האחרון שנרשם. ראיות בא', ה', י' ניסן נחשבות ראייה אחת שתחילתה א' ניסן. לפי המדידה מתחילת הראייה, י' ניסן היא ראייה חדשה.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 6</b>ראייה בתוך שבעה נקיים, 7 ימים ומעלה אחרי הדם האחרון</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>טו,ה: "בתוך ספירת הנקיים נמצאה בדיקה שאיננה טהורה ... אינה חייבת להמתין עוד הפעם". יז,כד: נטמאה באמצע, "הן בראיה גמורה או בדיקה לא טהורה, והן בכתם ... אינה צריכה לשוב ולהמתין חמשה ימים".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>ראתה בי' ניסן, הפסק בי"ד, ונרשמה ראייה בי"ז (יום נקי שלישי). התוכנה פותחת נידה חדשה ומציגה המתנת 5 ימים. בדיקה לא נקייה מטופלת נכון (כלל 11).</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 7</b>המשך ראייה לתוך יום החשש: כיצד יודעים עד מתי נמשך הדם?</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,מ: "המשיכה לראות בהמשך אחד גם ביום כ"ג באייר. מכל מקום מכיון שראתה בו רק כהמשך ראייתה ... הרי הוא נעקר".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>אין בתוכנה שדה "סוף דימום". היא מניחה שהדם נמשך עד יום ההפסק, ועוקרת חשש שחל עד אז. אם הדם פסק קודם, החשש נעקר אף שלא נמשך לתוכו.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 8</b>ווסת סירוג משתי ראיות</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,פב: "כל עוד שלא נקבע אינה חוששת לו כסירוג, אלא מתיחסת אל ראיותיה כאל ווסת רגיל".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>מציגה חשש סירוג כבר משתי ראיות. בנוסף, בשלוש ראיות מציגה גם סירוג של 4 חודשים.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 9</b>הפלגה קבועה שלא התקיימה: האם חוששת שוב?</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,ס: ווסת ההפלגה, "כאשר לא ראתה ביום שרשמה לחשוש בו, לדוגמא לסוף 20 יום, אינה חוששת כעבור עוד 20 יום ... כלומר ביום ה-40". וכד,סב: נעקר כשעבר משך השווה לשלוש הפלגות (60 יום) בלי ראייה.</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>אחרי סימון יום ה-20 כיום שעבר בלי ראייה, מציגה חשש ביום ה-40.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 10</b>עקירת ווסת קבוע: האם התוכנה חייבת לוודא בדיקה?</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,סג: "כשבדקה עצמה לחשש ווסתה כנדרש, ונמצאת טהורה, לפי שכל עקירת ווסת קבוע היא דווקא על ידי בדיקה".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>הכפתור אומר "יום החשש עבר ללא ראיה", ואינו שואל אם נעשתה בדיקה.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 11</b>שיטת שוע"ר כשלא נרשם הפסק טהרה</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,מו: "כל שהדם נמשך פחות משבעה ימים ... מחשבים בדיעבד את היום השביעי לראייתה, כאילו פסקה בו בטהרה". "ואם הדם נמשך יותר משבעה ימים", מחשבים מהיום שנראה לה שפסקה.</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>מחשבת מראייה + 7 ימים. כשיום הראייה הוא היום הראשון, זהו היום השמיני. אין טיפול בדם שנמשך יותר משבעה ימים.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 12</b>שיטת שוע"ר בצירוף חשש מתחילה לתחילה</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,מו, בשיטת הפוסקים המחשבים מתחילה לתחילה: "ויש שדעתם שאף שבעיקר יש לנהוג כשיטה זו, מכל מקום כל בעל נפש יחוש להחמיר על עצמו כשיטת שוע"ר".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>כשנבחרה שיטת שוע"ר, מציגה בנוסף חשש מתחילה לתחילה על ההפלגה האחרונה. כשנבחר מתחילה לתחילה, אינה מציגה חשש לפי שוע"ר.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 13</b>מעוברת ומינקת: מה דינו של ווסת קבוע?</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,צז: "בשלושת חדשי ההריון הראשונים דינה ככל אשה". כד,קה: ווסת קבוע שלא נעקר לפני הסילוק, "כאשר עוברים 24 חדשי המינקת חוזרת לחשוש לווסתה הקבוע הראשון".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>מרגע שהוגדרה מעוברת או מינקת, אין שום ווסת שמוצג כקבוע, גם ווסת שנקבע לפני הסילוק וגם בשלושת החודשים הראשונים. לא מיושמת חזרה לקבוע.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 14</b>מינקת: 24 חודש לפי איזה לוח?</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>הערה לכד,צט: "והחדשים לענין זה נמנים כפי חדשי השנה, בין מלא בין חסר". "ובשו"ת צמח צדק ... משמע שהוא לחדשי הלבנה".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>מונה 24 חודשים לפי הלוח הלועזי.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 15</b>מסופקת יום או לילה, וראייה בבין השמשות</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,י: כשמסופקת באיזו עונה ראתה, "עליה להחמיר לפרוש מספק הן ביום והן בלילה".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>השעה שהוקלדה קובעת יום או לילה בלבד. אין אפשרות לציין ספק, ואין טיפול מיוחד בבין השמשות.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 16</b>חישוב הנץ והשקיעה</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>כד,ט: מהנץ עד השקיעה. בספר משלים שבידינו, "טהרת המשפחה" (הרב דב טברדוביץ), נכתב שכנוהג חב"ד מוסיפים כ-4 דקות. ספר זה טרם אושר כמקור.</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>ללא תוספת דקות. העונה נקבעת לפי גובה פני הים, אך החלונות המוצגים להפסק ולבדיקות לפי גובה קבוע של 800 מטר בכל מקום. בירושלים ב-9.11.2026: שקיעה 16:43 לעומת 16:48.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 17</b>חלון בדיקת הבוקר</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>יז,ב: "בודקת בבוקר בקומה ממטתה, ואם משכימה לקום לפני הנץ החמה, ממתינה לכתחילה מלבדוק עד לאחריו".</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>מציגה חלון שמסתיים בנץ החמה (מעלות השחר עד הנץ).</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 18</b>בדיקות אחרי היום השביעי, וצירוף</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>יז,יא: בדקה בראשון, בשלישי ובשמיני: "טובלת במוצאי היום השמיני". יז,יב-יג: מקרים שבהם ממשיכה לבדוק עד היום התשיעי ומעלה.</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>צירוף כזה אינו מיושם. בנוסף, המסך מאפשר לרשום בדיקות רק בימים א' עד ז', ולכן מי שהחסירה את היום השביעי אינה יכולה להמשיך את הספירה בתוכנה.</p></div></div>
+      <div class="ruling">הכרעת הרב:<i></i></div></div>
+
+    <div class="q"><h3><b>שאלה 19</b>זמן הפסק טהרה</h3>
+      <div class="cols"><div><span class="lab">הכתוב במקור</span><p>פרק טז (הפסק טהרה) חסר בידינו: הקובץ שנסרק הוא העתק של פרק טו. במפתח הספר מופיעה ההפניה "מנחה קטנה טז,לד", אך הסעיף עצמו לא נבדק.</p></div>
+      <div><span class="lab">מה התוכנה עושה</span><p>מציגה חלון ממנחה קטנה עד השקיעה, ללא מקור שנבדק.</p></div></div>
+      <div class="ruling">הזמן הנכון לפי הרב:<i></i></div></div>
+
+  </div>
+</section>
+
+<section>
+  <h2>חלק ו': מה שהתוכנה אינה מחשבת כלל</h2>
+  <p class="lead">נושאים המופיעים במקורות ואינם מיושמים. נא לסמן אם נדרש להוסיף.</p>
+  <div class="tw"><table class="miss">
+    <thead><tr><th>נושא</th><th class="src">מקור</th><th class="ok2"></th></tr></thead>
+    <tbody>
+      <tr><td>עונה נוספת לפני עונת החשש (עונת אור זרוע)</td><td class="src">כד,ח</td><td class="ok2"></td></tr>
+      <tr><td>ווסת השבוע בסירוג</td><td class="src">כד,עג</td><td class="ok2"></td></tr>
+      <tr><td>דילוג בעונות</td><td class="src">כד,פה</td><td class="ok2"></td></tr>
+      <tr><td>ווסת הקפיצות וווסתות הגוף</td><td class="src">כד, הבהרות ג</td><td class="ok2"></td></tr>
+      <tr><td>ווסת שנקבע מקינוח, ודם מבדיקה רפואית ודאית</td><td class="src">כד,ג</td><td class="ok2"></td></tr>
+      <tr><td>צירוף ראייה שקדמה לקביעות, ושני ווסתות קבועים יחד</td><td class="src">כד,סט-ע</td><td class="ok2"></td></tr>
+      <tr><td>נטמאה אחרי הטבילה לפני תשמיש: ללא המתנת 5 ימים</td><td class="src">טו,ו</td><td class="ok2"></td></tr>
+      <tr><td>טומאה נוספת חמורה מהראשונה: מונים מהראשונה</td><td class="src">טו,ח</td><td class="ok2"></td></tr>
+      <tr><td>מצבים של המתנת 4 ימים, ומנהגי 5, 6, 7 ימים</td><td class="src">טו,א; טו,ט ואילך</td><td class="ok2"></td></tr>
+      <tr><td>מצבי קושי בבדיקות, היסח הדעת, מסופקת במניין, מעבר בין אזורי זמן</td><td class="src">יז,יד-כט</td><td class="ok2"></td></tr>
+      <tr><td>חזרה לווסת קבוע אחרי ימי הסילוק</td><td class="src">כד,קה</td><td class="ok2"></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="sign" style="break-inside: avoid">
+  <div>
+    <h2>הערות נוספות</h2>
+    <div class="lines"><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
+  <div class="signrow"><span>שם הרב</span><span>חתימה</span><span>תאריך</span></div>
+</section>
+
+</div>

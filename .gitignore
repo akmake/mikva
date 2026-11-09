@@ -3,3 +3,6 @@ client/node_modules/
 server/node_modules/
 client/dist/
 .env
+server/.pgdata
+
+server/.mail-outbox
